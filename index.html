@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#120d14" />
+    <title>Badger Bandits</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <main id="front">
+      <h1>
+        <svg viewBox="0 0 1240 220" role="img" aria-label="Badger Bandits">
+          <defs>
+            <text id="wm" x="620" y="150" text-anchor="middle">Badger Bandits</text>
+            <linearGradient id="wm-face" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0.15" stop-color="#fff7e0" />
+              <stop offset="0.75" stop-color="#f6cf7a" />
+            </linearGradient>
+            <linearGradient id="wm-side" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0.4" stop-color="#b8702a" />
+              <stop offset="0.9" stop-color="#6e3a14" />
+            </linearGradient>
+          </defs>
+          <!-- the extrusion: every layer's outline first, then every layer's fill, so the bronze isn't painted over -->
+          <g class="wm-edge"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
+          <g class="wm-side"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
+          <use class="wm-face" href="#wm" />
+        </svg>
+      </h1>
+      <img src="./art/bandit-raccoon.webp" alt="A raccoon in a black bandit mask" />
+      <p id="front-prompt">Casing the joint…</p>
+      <p id="front-keys">M to mute, N for music</p>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
