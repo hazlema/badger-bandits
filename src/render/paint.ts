@@ -167,6 +167,42 @@ export function woodPanel(c: Ctx, x: number, y: number, w: number, h: number, r:
   c.restore();
 }
 
+/** Boards laid on their side, for signs and the counter: seams, grain, darker toward the ends. Deterministic. */
+export function woodBoards(c: Ctx, x: number, y: number, w: number, h: number, r: number, bh = 18) {
+  const tones = ['#7a4a2b', '#6c4024', '#82502f', '#714527'];
+  c.save();
+  rr(c, x, y, w, h, r);
+  c.clip();
+  for (let i = 0, by = y; by < y + h; i++, by += bh) {
+    c.fillStyle = tones[i % tones.length];
+    c.fillRect(x, by, w, bh);
+    c.strokeStyle = 'rgba(40, 20, 10, 0.16)';
+    c.lineWidth = 1;
+    for (let k = 0; k < 3; k++) {
+      const gy = by + bh * (0.25 + 0.25 * k);
+      c.beginPath();
+      for (let gx = 0; gx <= w; gx += 12) {
+        const wob = Math.sin(gx * 0.019 + i * 1.9 + k * 2.1) * 1.4 + Math.sin(gx * 0.06 + k) * 0.5;
+        if (gx === 0) c.moveTo(x + gx, gy + wob);
+        else c.lineTo(x + gx, gy + wob);
+      }
+      c.stroke();
+    }
+    c.fillStyle = 'rgba(25, 12, 6, 0.55)'; // seam
+    c.fillRect(x, by - 1, w, 2);
+    c.fillStyle = 'rgba(255, 220, 170, 0.08)'; // the board's lit edge
+    c.fillRect(x, by + 1, w, 2);
+  }
+  const v = c.createLinearGradient(x, 0, x + w, 0);
+  v.addColorStop(0, 'rgba(10, 5, 2, 0.35)');
+  v.addColorStop(0.2, 'rgba(10, 5, 2, 0)');
+  v.addColorStop(0.8, 'rgba(10, 5, 2, 0)');
+  v.addColorStop(1, 'rgba(10, 5, 2, 0.35)');
+  c.fillStyle = v;
+  c.fillRect(x, y, w, h);
+  c.restore();
+}
+
 /** Colours for anything drawn on a popup. */
 export const POPUP = {
   ink: C.cream,

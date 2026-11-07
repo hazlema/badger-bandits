@@ -9,29 +9,104 @@
   </head>
   <body>
     <canvas id="view"></canvas>
-    <main id="front">
-      <h1>
-        <svg viewBox="0 0 1240 220" role="img" aria-label="Badger Bandits">
+    <main id="front" data-input="keys">
+      <!-- the store at night: the wall, a hole in the ceiling and its moonbeam -->
+      <div class="front-hole"></div>
+      <div class="front-beam"></div>
+      <div class="front-stage">
+        <svg class="front-shelves" viewBox="0 0 300 380" aria-hidden="true">
           <defs>
-            <text id="wm" x="620" y="150" text-anchor="middle">Badger Bandits</text>
-            <linearGradient id="wm-face" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0.15" stop-color="#fff7e0" />
-              <stop offset="0.75" stop-color="#f6cf7a" />
+            <linearGradient id="shelf-wood" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8a5a33" />
+              <stop offset="1" stop-color="#4a2a1a" />
             </linearGradient>
-            <linearGradient id="wm-side" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0.4" stop-color="#b8702a" />
-              <stop offset="0.9" stop-color="#6e3a14" />
-            </linearGradient>
+            <!-- bottles, drawn up from their bottom centre so they stand on y -->
+            <g id="b-tall"><rect x="-4" y="-78" width="8" height="22" rx="2" /><rect x="-11" y="-58" width="22" height="58" rx="7" /><rect x="-7" y="-50" width="3" height="40" fill="#fff" fill-opacity="0.12" stroke="none" /></g>
+            <g id="b-mid"><rect x="-4" y="-62" width="8" height="16" rx="2" /><rect x="-14" y="-48" width="28" height="48" rx="8" /><rect x="-9" y="-40" width="3" height="30" fill="#fff" fill-opacity="0.12" stroke="none" /></g>
+            <g id="b-squat"><rect x="-5" y="-50" width="10" height="12" rx="2" /><rect x="-16" y="-40" width="32" height="40" rx="10" /><rect x="-10" y="-32" width="3" height="22" fill="#fff" fill-opacity="0.12" stroke="none" /></g>
+            <g id="shelves" stroke="#120d14" stroke-width="2">
+              <use href="#b-tall" x="30" y="100" fill="#3d5a3a" />
+              <use href="#b-mid" x="80" y="100" fill="#6b3a22" />
+              <use href="#b-squat" x="132" y="100" fill="#4a3550" />
+              <use href="#b-tall" x="182" y="100" fill="#c98a2a" class="special" />
+              <use href="#b-mid" x="232" y="100" fill="#2f4a55" />
+              <rect x="-4" y="100" width="308" height="14" rx="3" fill="url(#shelf-wood)" stroke="#1c1418" />
+              <use href="#b-squat" x="40" y="230" fill="#7a5a2a" />
+              <use href="#b-tall" x="92" y="230" fill="#2f4a55" />
+              <use href="#b-tall" x="136" y="230" fill="#3d5a3a" />
+              <use href="#b-mid" x="190" y="230" fill="#4a3550" />
+              <use href="#b-squat" x="250" y="230" fill="#6b3a22" />
+              <rect x="-4" y="230" width="308" height="14" rx="3" fill="url(#shelf-wood)" stroke="#1c1418" />
+              <use href="#b-mid" x="28" y="360" fill="#4a3550" />
+              <use href="#b-tall" x="76" y="360" fill="#7a5a2a" />
+              <use href="#b-squat" x="126" y="360" fill="#3d5a3a" />
+              <use href="#b-tall" x="176" y="360" fill="#6b3a22" />
+              <use href="#b-mid" x="222" y="360" fill="#c98a2a" class="special" />
+              <use href="#b-tall" x="272" y="360" fill="#2f4a55" />
+              <rect x="-4" y="360" width="308" height="14" rx="3" fill="url(#shelf-wood)" stroke="#1c1418" />
+            </g>
           </defs>
-          <!-- the extrusion: every layer's outline first, then every layer's fill, so the bronze isn't painted over -->
-          <g class="wm-edge"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
-          <g class="wm-side"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
-          <use class="wm-face" href="#wm" />
+          <use href="#shelves" />
         </svg>
-      </h1>
-      <img src="./art/bandit-raccoon.webp" alt="A raccoon in a black bandit mask" />
-      <p id="front-prompt">Casing the joint…</p>
-      <p id="front-keys">M to mute, N for music</p>
+        <svg class="front-shelves right" viewBox="0 0 300 380" aria-hidden="true"><use href="#shelves" /></svg>
+
+        <div class="front-sign">
+          <div class="front-sway">
+            <h1>
+              <svg viewBox="0 0 1240 220" role="img" aria-label="Badger Bandits">
+                <defs>
+                  <text id="wm" x="620" y="150" text-anchor="middle">Badger Bandits</text>
+                  <linearGradient id="wm-face" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0.15" stop-color="#fff7e0" />
+                    <stop offset="0.75" stop-color="#f6cf7a" />
+                  </linearGradient>
+                  <linearGradient id="wm-side" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0.4" stop-color="#b8702a" />
+                    <stop offset="0.9" stop-color="#6e3a14" />
+                  </linearGradient>
+                </defs>
+                <!-- the extrusion: every layer's outline first, then every layer's fill, so the bronze isn't painted over -->
+                <g class="wm-edge"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
+                <g class="wm-side"><use href="#wm" y="24" /><use href="#wm" y="20" /><use href="#wm" y="16" /><use href="#wm" y="12" /><use href="#wm" y="8" /><use href="#wm" y="4" /></g>
+                <use class="wm-face" href="#wm" />
+              </svg>
+            </h1>
+          </div>
+        </div>
+
+        <button type="button" id="front-prompt">Casing the joint…</button>
+        <img src="./art/bandit-raccoon.webp" alt="A raccoon in a black bandit mask, peeking over the counter" />
+
+        <div class="front-counter">
+          <ul class="front-tags keys" aria-label="Keyboard controls">
+            <li><span><kbd>←</kbd><kbd>→</kbd></span>Move</li>
+            <li><span><kbd>↑</kbd></span>Climb</li>
+            <li><span><kbd class="wide">Space</kbd></span>Jump</li>
+            <li><span><kbd>E</kbd></span>Grab · Drink</li>
+            <li><span><kbd>F</kbd></span>Throw</li>
+            <li><span><kbd>Q</kbd></span>Switch</li>
+            <li><span><kbd>R</kbd></span>Hoot</li>
+            <li><span><kbd>Esc</kbd></span>Pause</li>
+          </ul>
+          <ul class="front-tags pad" aria-label="Gamepad controls">
+            <li><span><kbd class="round">L</kbd></span>Move · Climb</li>
+            <li><span><kbd class="round">A</kbd></span>Jump</li>
+            <li><span><kbd class="round">X</kbd></span>Grab · Drink</li>
+            <li><span><kbd class="round">B</kbd></span>Throw</li>
+            <li><span><kbd class="pill">LB</kbd><kbd class="pill">RB</kbd></span>Switch</li>
+            <li><span><kbd class="round">Y</kbd></span>Hoot</li>
+            <li><span><kbd class="pill">Start</kbd></span>Pause</li>
+          </ul>
+          <div class="front-sound">
+            <button type="button" id="front-mute" aria-label="Mute (M)" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" /><path class="on" d="M15.5 8.5a5 5 0 0 1 0 7" /><path class="off" d="M16 9l6 6M22 9l-6 6" /></svg>M
+            </button>
+            <button type="button" id="front-music" aria-label="Music (N)" aria-pressed="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /><path class="off" d="M3 3l18 18" /></svg>N
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
     <script type="module" src="./src/main.ts"></script>
   </body>
