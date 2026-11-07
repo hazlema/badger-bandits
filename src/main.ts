@@ -23,8 +23,11 @@ const skipTutorial = params.has('store');
 const front = document.getElementById('front')!;
 const frontPrompt = document.getElementById('front-prompt')!;
 const frontImg = front.querySelector('img')!;
+const muteBtn = document.getElementById('front-mute')!;
+const musicBtn = document.getElementById('front-music')!;
 let ready = false;
-const fonts = Promise.all([document.fonts.load('700 1em Fredoka'), document.fonts.load('600 1em Fredoka')]);
+// A font that fails to load still lets the game start, in the fallback face.
+const fonts = Promise.all([document.fonts.load('700 1em Fredoka'), document.fonts.load('600 1em Fredoka')]).catch(() => {});
 fonts.then(() => front.classList.add('fonts'));
 Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTimeout(r, skipTutorial ? 0 : 1500))]).then(() => {
   ready = true;
@@ -52,6 +55,33 @@ function restart(to: typeof mode = 'play') {
   mode = to;
   front.classList.toggle('hidden', mode !== 'title');
   expose();
+}
+
+function start() {
+  if (mode !== 'title' || !ready) return;
+  mode = 'play';
+  front.classList.add('hidden');
+}
+
+function toggleMute() {
+  localStorageSet('plc.muted', sound.toggle() ? '1' : '0');
+  showSound();
+}
+function toggleMusic() {
+  localStorageSet('plc.music', sound.toggleMusic() ? '1' : '0');
+  showSound();
+}
+function showSound() {
+  muteBtn.setAttribute('aria-pressed', String(sound.muted));
+  musicBtn.setAttribute('aria-pressed', String(sound.musicOn));
+}
+showSound();
+// Blur after a click, so a later Space plays rather than pressing the button again.
+for (const [btn, act] of [[frontPrompt, start], [muteBtn, toggleMute], [musicBtn, toggleMusic]] as const) {
+  btn.addEventListener('click', () => {
+    act();
+    btn.blur();
+  });
 }
 
 function resize() {
@@ -87,12 +117,9 @@ function frame(now: number) {
   for (const m of controls.menu()) {
     sound.unlock();
     const confirm = m === 'Space' || m === 'Enter' || m === 'PadA';
-    if (m === 'KeyM') localStorageSet('plc.muted', sound.toggle() ? '1' : '0');
-    else if (m === 'KeyN') localStorageSet('plc.music', sound.toggleMusic() ? '1' : '0');
-    else if (mode === 'title' && ready && (confirm || m === 'PadStart')) {
-      mode = 'play';
-      front.classList.add('hidden');
-    }
+    if (m === 'KeyM') toggleMute();
+    else if (m === 'KeyN') toggleMusic();
+    else if (mode === 'title' && ready && (confirm || m === 'PadStart')) start();
     else if (mode === 'card' && (confirm || m === 'PadStart')) restart('title');
     else if (mode === 'play' && (m === 'Escape' || m === 'KeyP' || m === 'PadStart')) {
       mode = 'paused';
@@ -134,9 +161,11 @@ function frame(now: number) {
   drawHud(ctx, game, time);
   if (mode === 'paused') drawPause(ctx, pauseChoice, controls.usingPad);
   if (mode === 'card') drawCard(ctx, game, time, controls.usingPad);
-  if (mode === 'title' && ready) {
+  if (mode === 'title') {
+    const input = controls.usingPad ? 'pad' : 'keys';
+    if (front.dataset.input !== input) front.dataset.input = input;
     const say = `Press ${controls.usingPad ? 'A' : 'Space'} to begin`;
-    if (frontPrompt.textContent !== say) frontPrompt.textContent = say;
+    if (ready && frontPrompt.textContent !== say) frontPrompt.textContent = say;
   }
   ctx.restore();
   requestAnimationFrame(frame);
