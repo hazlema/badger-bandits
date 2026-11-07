@@ -139,7 +139,7 @@ export function storeLevel(seed = 1): Level {
       counter,
     ],
     boards,
-    climbables: units.map((u) => ({ x: u.x, y: u.top, w: u.w, h: floorY - u.top })),
+    climbables: [], // no shelf climbing: you jump up the boards and hop down through them (host, 2026-11-06)
     units,
     bottles,
     signs: [],

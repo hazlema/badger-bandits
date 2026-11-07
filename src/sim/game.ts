@@ -44,7 +44,7 @@ export interface Raccoon {
   grounded: boolean;
   ground: 'solid' | number | null; // board index when standing on a board
   climbing: boolean;
-  dropT: number;
+  dropBoard: number; // the board you hopped down through, ignored until you're below it; -1 for none
   state: 'move' | 'sip' | 'spin' | 'playdead' | 'hoot' | 'ko';
   stateT: number;
   hiddenOk: boolean; // dove into the plush unseen
@@ -175,7 +175,7 @@ export class Game {
     this.rand = rng(opts.seed ?? 1);
     this.raccoon = {
       x: 0, y: 0, vx: 0, vy: 0, w: RACCOON.w, h: RACCOON.h, facing: 1, grounded: false, ground: null,
-      climbing: false, dropT: 0, state: 'move', stateT: 0, hiddenOk: false, health: RACCOON.health,
+      climbing: false, dropBoard: -1, state: 'move', stateT: 0, hiddenOk: false, health: RACCOON.health,
       buzz: 0, buzzT: 0, hiccupT: 0, hiccups: 0, cheeks: false, carry: [], ready: 0, cap: RACCOON.carry, invuln: 0,
       gripT: 0, aimT: null, seaLegs: 0, blueT: 0, printDist: 0, peakY: 0,
     };
@@ -269,7 +269,6 @@ export class Game {
     const R = this.raccoon;
     const L = this.level;
     R.invuln = Math.max(0, R.invuln - dt);
-    R.dropT = Math.max(0, R.dropT - dt);
     R.gripT = Math.max(0, R.gripT - dt);
     R.seaLegs = Math.max(0, R.seaLegs - dt);
     R.blueT = Math.max(0, R.blueT - dt);
@@ -318,6 +317,14 @@ export class Game {
     }
     const onPlush = this.onPlush();
     if (free && edge.down && !input.throw && onPlush) this.playDead();
+    // Down on a shelf board hops you down through it to the board (or floor) below.
+    else if (free && edge.down && !input.throw && R.grounded && typeof R.ground === 'number' && !this.climbableAt()) {
+      R.dropBoard = R.ground;
+      R.vy = -RACCOON.dropHop;
+      R.grounded = false;
+      R.ground = null;
+      this.emit({ type: 'jump' });
+    }
 
     // Climbing: hold Up against a shelf (or the trellis). Down climbs down.
     const climb = this.climbableAt();
@@ -467,9 +474,10 @@ export class Game {
         R.vy = 0;
       }
     }
-    if (!R.climbing && R.dropT <= 0 && R.vy >= 0) {
+    if (R.dropBoard >= 0 && prevFeet > L.boards[R.dropBoard].y + 2) R.dropBoard = -1; // already below it
+    if (!R.climbing && R.vy >= 0) {
       L.boards.forEach((b, i) => {
-        if (R.x < b.x1 || R.x > b.x2) return;
+        if (i === R.dropBoard || R.x < b.x1 || R.x > b.x2) return;
         if (prevFeet <= b.y + 0.5 && R.y >= b.y) {
           R.y = b.y;
           R.vy = 0;
@@ -492,6 +500,7 @@ export class Game {
       if (R.vy < 0) R.vy = 0;
     }
     if (R.climbing && R.vy > 0 && R.ground === 'solid') R.climbing = false;
+    if (R.grounded) R.dropBoard = -1;
     if (!R.grounded) R.peakY = Math.min(R.peakY, R.y);
     if (R.grounded && !wasGrounded) {
       this.emit({ type: 'land' });
@@ -1246,7 +1255,7 @@ export class Game {
   /**
    * Is the raccoon in Bob's flashlight? It must be inside the cone and in
    * range, and the line can't cross a shelf unit's end panel or the counter.
-   * So a shelf hides you from a distance, and close up you hide by climbing
+   * So a shelf hides you from a distance, and close up you hide by jumping up
    * above where his beam can tilt.
    */
   seen(ignoreHidden = false): boolean {
@@ -1297,6 +1306,7 @@ export class Game {
   /* -------------------------------------------------------------- flow */
 
   private place(x: number, y: number) {
+    this.raccoon.dropBoard = -1;
     const R = this.raccoon;
     R.x = x;
     R.y = y;

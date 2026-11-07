@@ -11,7 +11,7 @@ npm run build     # dist/
 
 | | Keyboard | Gamepad |
 |---|---|---|
-| Move / climb | arrows or WASD (hold ↑ against a shelf to climb; tap ↓ to drop a shelf, hold to climb down) | stick or d-pad |
+| Move | arrows or WASD (↓ on a shelf hops down to the board below; ↑ climbs the roof trellis) | stick or d-pad |
 | Jump | Space or Z | A |
 | Grab (take the highlighted bottle, drink, hand up, use) | E or X | X |
 | Throw: hold +↑ (or nothing) to lob, +↓ drop, +forward roll | F or C | B |
@@ -50,7 +50,7 @@ Agreed with the host before this pass:
 
 - **Falling from the high shelves** (host, after the throwing playtest): you're knocked out for 3 s and lose 5%
   health. A fall of 250 px or more counts, so walking or getting knocked off the 230 board or higher onto the floor;
-  dropping one shelf or climbing down is fine. It's drawn as a cartoon daze (sprawled, stars circling, swirly eyes),
+  hopping down one board at a time is fine. It's drawn as a cartoon daze (sprawled, stars circling, swirly eyes),
   not passed out, because the board rules out passing out. Bob can still nab you while you're dazed.
 - **The cousin minds the merchandise** (host): every 4th bottle you smash without handing anything up, the cousin
   hisses "Pssst! Don't smash ALL the merchandise!" (or one of two others). A hand-up starts the count over. That
@@ -66,10 +66,15 @@ Agreed with the host before this pass:
   popups is one change. The shelter slip keeps its form-style header and the red CAUGHT stamp. The HUD panels and
   speech bubbles aren't popups and keep their charcoal style.
 
+- **No shelf climbing** (host): Up and Down no longer climb an invisible ladder on the shelves. You jump up the
+  boards (the jump went from about 90 px to about 124 px so it reliably reaches the next board, including the 100 px
+  step up to the hole board), and ↓ on a board is a little hop that drops you through it to the board below. The roof
+  trellis is a real ladder you can see, so it still climbs, and a climb there can still slip at high Buzz.
+
 Smaller calls:
 
 - **Out of Bob's sight:** his flashlight is a cone that sweeps up and down. Shelf units' end panels and the counter
-  block it. A shelf hides you from a distance; up close, you hide by climbing above where his beam can tilt.
+  block it. A shelf hides you from a distance; up close, you hide by jumping up above where his beam can tilt.
 - **Bottles in the air pass through shelf boards.** Knocked bottles fall to the floor, so drinking means coming down
   to where the scrubber is, and a lob lands on the floor (or whoever is standing there), not on a shelf.
 - A bottle that hits someone damages them and makes no noise ring. Only a bottle that hits nothing rings.
@@ -87,7 +92,6 @@ Smaller calls:
 - The random stumbles are gone; the board no longer lists them.
 - "High up, a climb can slip" is read as Buzz step 4+.
 - Mini-bottle rack: 8 bottles, 10% golden, can be spun until empty. The tote is free and can be taken once.
-- Holding ↓ climbs down a shelf (the board only gives ↓ to play dead).
 - The scrubber only bumps you while it's rushing to a crash, as written. On patrol it rolls past.
 - With one night built, the report card's only button is Title (no Next night yet), and the title has no Quit,
   since it's a browser tab. The coins counter is there but stays at 0: nothing on night 1 gives coins.

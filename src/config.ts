@@ -16,7 +16,8 @@ export const RACCOON = {
   accel: 1900,
   decel: 2300,
   airControl: 0.75,
-  jumpSpeed: 520, // ~110 px jump (guess)
+  jumpSpeed: 610, // ~124 px: clears a shelf board (90 px apart, 100 to the hole board) with room to spare (guess)
+  dropHop: 200, // Down on a board: a little hop, then you fall through it to the one below (guess)
   gravity: 1500,
   maxFall: 900,
   climbSpeed: 150,

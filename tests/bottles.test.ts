@@ -286,18 +286,51 @@ describe('falling from the high shelves', () => {
     expect(g.raccoon.state).toBe('move');
   });
 
-  it('a low shelf or a climb down is fine', () => {
+  it('a low shelf, or hopping down board by board, is fine', () => {
     const low = store();
     walkOff(low, 320);
     expect(low.raccoon.state).toBe('move');
     expect(low.raccoon.health).toBe(100);
 
-    const climb = store();
-    stand(climb, 900, 150);
-    for (let i = 0; i < 400 && climb.raccoon.y < 500; i++) climb.step({ ...NO_INPUT, down: true });
-    run(climb, {}, 0.2);
-    expect(climb.raccoon.state).toBe('move');
-    expect(climb.raccoon.health).toBe(100);
+    const hop = store();
+    stand(hop, 1300, 150);
+    for (let i = 0; i < 6 && hop.raccoon.y < 500; i++) {
+      press(hop, { down: true });
+      run(hop, {}, 0.8);
+    }
+    expect(hop.raccoon.y).toBe(500);
+    expect(hop.raccoon.state).toBe('move');
+    expect(hop.raccoon.health).toBe(100);
+  });
+});
+
+describe('getting around the shelves', () => {
+  it('Down hops you through the board you are on and lands you on the next one', () => {
+    const g = store();
+    stand(g, 1300, 320);
+    const seen = press(g, { down: true });
+    expect(seen.some((e) => e.type === 'jump')).toBe(true);
+    run(g, {}, 0.8);
+    expect(g.raccoon.y).toBe(410);
+    expect(g.raccoon.grounded).toBe(true);
+  });
+
+  it('Up does nothing against a shelf: no invisible ladder', () => {
+    const g = store();
+    stand(g, 1300, 500);
+    run(g, { up: true }, 1);
+    expect(g.raccoon.y).toBe(500);
+    expect(g.raccoon.climbing).toBe(false);
+  });
+
+  it('a jump reaches the next board up, including the taller step to the hole board', () => {
+    for (const [x, from, to] of [[1300, 500, 410], [1300, 320, 230], [1300, 230, 150], [170, 230, 130]]) {
+      const g = store();
+      stand(g, x, from);
+      press(g, { jump: true });
+      run(g, {}, 1);
+      expect(g.raccoon.y).toBe(to);
+    }
   });
 });
 

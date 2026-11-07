@@ -211,7 +211,7 @@ describe("Bob's flashlight", () => {
     }
   });
 
-  it('close up, you get out of the beam by climbing above it', () => {
+  it('close up, you get out of the beam by getting up above it', () => {
     const g = withBob();
     g.bob.x = 1300;
     g.bob.dir = 1;

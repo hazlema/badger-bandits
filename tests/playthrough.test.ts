@@ -37,10 +37,10 @@ it('night 1 is playable start to finish with real inputs only', () => {
   until(g, {}, () => R.grounded, 2);
   expect(R.y).toBe(130);
 
-  // Climb down, grab a bottle from the back shelf's second board.
+  // Hop down, grab a bottle from the back shelf's second board.
   until(g, { left: true }, () => R.x < 120, 2);
   until(g, {}, () => Math.abs(R.vx) < 1, 1);
-  tap(g, 'down'); // a tap drops one shelf; holding climbs all the way down
+  tap(g, 'down'); // hops down through the board to the one below
   expect(until(g, {}, () => R.grounded, 3)).toBe(true);
   expect(R.y).toBe(230);
   const target = g.bottles.find((b) => b.state === 'shelf' && g.level.boards[b.board].y === 230 && g.level.boards[b.board].unit === 0 && b.x > R.x)!;
@@ -54,11 +54,12 @@ it('night 1 is playable start to finish with real inputs only', () => {
   tap(g, 'grab');
   expect(R.carry.length).toBe(1);
 
-  // Back up to the hole, hand it up, climb out.
+  // Jump back up to the hole, hand it up, climb out.
   const hx = g.level.hole!.x + 40;
   until(g, { left: R.x > hx, right: R.x < hx }, () => Math.abs(R.x - hx) < 30, 3);
   until(g, {}, () => Math.abs(R.vx) < 1, 1);
-  expect(until(g, { up: true }, () => R.y === 130 && R.grounded, 4)).toBe(true);
+  tap(g, 'jump');
+  expect(until(g, {}, () => R.y === 130 && R.grounded, 2)).toBe(true);
   until(g, {}, () => false, 0.2);
   expect(g.atHole()).toBe(true);
   tap(g, 'grab');
