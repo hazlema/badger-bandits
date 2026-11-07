@@ -1,6 +1,6 @@
 // Draws the level and everyone in it, in world coordinates under a camera.
 
-import { BOB, NIGHT, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
+import { BOB, BOB_THROW, NIGHT, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
 import type { Game, Raccoon } from '../sim/game';
 import type { ItemKind, Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
@@ -479,6 +479,20 @@ export class WorldView {
       ellipse(c, bx, y - 2, 7, 3, '#3a6fb0', (time * (rush ? 20 : 8)) % 3.14);
     }
     if (rush) text(c, '!', S.x, y - 46, 22, C.red, 'center', 700);
+    if (S.state === 'alarm') {
+      // The snitch: a spinning red and blue light and a WEE-OO.
+      const red = Math.sin(time * 14) > 0;
+      fillRR(c, S.x - 6, y - 34, 12, 8, 3, red ? '#ff3b30' : '#3a7bff', C.ink, 1.5);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      const gr = c.createRadialGradient(S.x, y - 30, 2, S.x, y - 30, 120);
+      gr.addColorStop(0, withAlpha(red ? '#ff3b30' : '#3a7bff', 0.55));
+      gr.addColorStop(1, withAlpha(red ? '#ff3b30' : '#3a7bff', 0));
+      c.fillStyle = gr;
+      c.fillRect(S.x - 120, y - 150, 240, 150);
+      c.restore();
+      text(c, red ? 'WEE-' : 'OOO!', S.x, y - 52, 16, red ? '#ff6a60' : '#7aa8ff', 'center', 700);
+    }
     if (S.state === 'slurp') text(c, 'slurrrp', S.x, y - 44, 14, '#a8e0ff', 'center');
   }
 
@@ -576,6 +590,19 @@ export class WorldView {
     c.lineTo(o.x, o.y);
     c.stroke();
     fillRR(c, o.x - 5, o.y - 4, 10, 8, 2, '#33333a');
+    if (B.holding) {
+      // Winding up: the bottle raised high over his head, so you see it coming.
+      const hx = x + d * 14;
+      const hy = fy - 104 - 6 * Math.sin((B.windT / BOB_THROW.windup) * Math.PI);
+      c.strokeStyle = '#a89668';
+      c.lineWidth = 7;
+      c.beginPath();
+      c.moveTo(x - d * 4, fy - 72);
+      c.lineTo(hx, hy + 6);
+      c.stroke();
+      drawBottle(c, hx, hy + 4, B.holding, 0, -d * 0.5);
+      text(c, '!', x - d * 10, fy - 124, 24, C.red, 'center', 700);
+    }
   }
 
   /* ------------------------------------------------------------ light */
@@ -643,8 +670,8 @@ export class WorldView {
       else if (!g.toteTaken && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.tote!.x + L.tote!.w / 2)) < 40) s = `${k.grab} take the tote bag`;
       else if (R.grounded && R.y === L.counter!.y && Math.abs(R.x - (L.rack!.x + L.rack!.w / 2)) < 50 && g.rack.stock > 0) s = `${k.grab} spin the mini-bottle rack`;
       else if (R.carry.length && R.grounded && Math.abs(R.vx) < 20) s = `${k.throw} throw · ${k.hoot} hoot${R.carry.length > 1 ? ` · ${k.swap} switch` : ''}`;
-    } else if (L.id === 'roof' && L.vent && Math.abs(R.x - (L.vent.x + L.vent.w / 2)) < 70 && R.y === 260) s = `${k.grab} pry up the vent`;
-    else if (L.id === 'crawl' && !g.wiresChewed && Math.abs(R.x - L.wires!.x) < 50) s = `${k.grab} chew the wires`;
+    } else if (L.id === 'roof' && L.vent && g.reaches(L.vent)) s = `${k.grab} pry up the vent`;
+    else if (L.id === 'crawl' && L.wires && !g.wiresChewed && g.reaches(L.wires, 20)) s = `${k.grab} chew the wires`;
     if (!s) return;
     c.font = `600 13px "Fredoka", sans-serif`;
     const w = c.measureText(s).width + 16;

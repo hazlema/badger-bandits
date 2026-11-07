@@ -17,13 +17,14 @@ describe('scoring rules', () => {
     expect([0, 1, 2, 3, 4, 5].map(multFor)).toEqual([1, 1.5, 2, 2.5, 3, 3.5]);
   });
 
-  it('grades by score against par', () => {
-    const par = NIGHT.par;
-    expect(gradeFor(0.49 * par, par)).toBe('F');
-    expect(gradeFor(0.5 * par, par)).toBe('D');
-    expect(gradeFor(par, par)).toBe('C');
-    expect(gradeFor(1.5 * par, par)).toBe('B');
-    expect(gradeFor(2 * par, par)).toBe('A');
+  it('grades on the school scale: your score as a percentage of the night target', () => {
+    const t = NIGHT.target;
+    expect(gradeFor(0.59 * t, t)).toBe('F');
+    expect(gradeFor(0.6 * t, t)).toBe('D');
+    expect(gradeFor(0.7 * t, t)).toBe('C');
+    expect(gradeFor(0.8 * t, t)).toBe('B');
+    expect(gradeFor(0.9 * t, t)).toBe('A');
+    expect(gradeFor(0.33 * t, t)).toBe('F'); // 33% is an F (host)
   });
 });
 
@@ -94,19 +95,24 @@ describe('the store', () => {
     expect(g.raccoon.carry).toEqual([]);
   });
 
-  it("the report card shows what share of the store's stock you got away with", () => {
+  it('the night log adds up to the night score, and says what being caught cost you', () => {
     const g = store();
-    expect(g.stock).toBeGreaterThan(0);
-    g.raccoon.carry = ['rum', 'curacao'];
-    g.raccoon.buzz = 3; // Buzz multiplies the score, not the share
+    g.raccoon.buzz = 2;
+    g.raccoon.carry = ['rum', 'regular'];
     tap(g, 'grab');
-    g.raccoon.carry = ['regular'];
+    g.raccoon.carry = ['mini'];
     g.end(true, 'climbed');
-    expect(g.result!.share).toBeCloseTo(33 / g.stock, 6);
+    const sum = g.log.reduce((s, e) => s + (e.pts ?? 0), 0);
+    expect(sum).toBeCloseTo(g.result!.score, 6);
+    expect(g.log.some((e) => e.text.startsWith('Handed up 2 bottles (1 special): 18 at ×2 Buzz') && e.pts === 36)).toBe(true);
+
     const caught = store();
     caught.raccoon.carry = ['rum'];
+    tap(caught, 'grab');
+    caught.raccoon.carry = ['regular'];
     caught.end(false, 'bob');
-    expect(caught.result!.share).toBe(0); // animal control keeps what's in your paws
+    expect(caught.log.reduce((s, e) => s + (e.pts ?? 0), 0)).toBeCloseTo(caught.result!.score, 6);
+    expect(caught.log.some((e) => e.text.startsWith('Lost:'))).toBe(true);
   });
 
   it('special bottles are worth 5x a regular one when you hand them up', () => {
@@ -238,5 +244,60 @@ describe("Bob's flashlight", () => {
     g.bob.beam = 0.1;
     expect(g.seen(true)).toBe(true);
     expect(g.seen()).toBe(false);
+  });
+});
+
+describe('tutorial interactions', () => {
+  const at = (g: Game, x: number, facing: 1 | -1) => {
+    g.raccoon.x = x;
+    g.raccoon.facing = facing;
+    g.raccoon.vx = 0;
+    run(g, {}, 0.3);
+  };
+
+  it('E pries up the vent from anywhere over or beside it, facing either way', () => {
+    const vent = new Game().level.vent!;
+    for (let x = vent.x - 10; x <= vent.x + vent.w + 10; x += 5) {
+      for (const facing of [1, -1] as const) {
+        const g = new Game();
+        g.raccoon.y = 260;
+        at(g, x, facing);
+        expect(g.reaches(vent), `x ${x} facing ${facing}`).toBe(true); // so the prompt shows
+        tap(g, 'grab');
+        expect(g.phase, `x ${x} facing ${facing}`).toBe('crawl');
+      }
+    }
+  });
+
+  it('too far from the vent, no prompt and E does nothing', () => {
+    const g = new Game();
+    g.raccoon.y = 260;
+    at(g, 1050, 1);
+    expect(g.reaches(g.level.vent!)).toBe(false);
+    tap(g, 'grab');
+    expect(g.phase).toBe('roof');
+  });
+
+  it('E chews the wires from right up against them, facing either way', () => {
+    const start = new Game();
+    start.raccoon.y = 260;
+    at(start, 1200, 1);
+    tap(start, 'grab');
+    settle(start);
+    const wires = start.level.wires!;
+    for (let x = wires.x - 60; x <= wires.x - RACCOON.w / 2; x += 5) {
+      for (const facing of [1, -1] as const) {
+        const g = new Game();
+        g.raccoon.y = 260;
+        at(g, 1200, 1);
+        tap(g, 'grab');
+        settle(g);
+        if (facing === -1 && x < wires.x - RACCOON.w / 2 - 20) continue; // back turned and a step away: fair to miss
+        at(g, x, facing);
+        expect(g.reaches(wires, 20), `x ${x} facing ${facing}`).toBe(true);
+        tap(g, 'grab');
+        expect(g.wiresChewed, `x ${x} facing ${facing}`).toBe(true);
+      }
+    }
   });
 });

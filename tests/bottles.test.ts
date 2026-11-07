@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUZZ, DT, FALL, FLOW, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, RING } from '../src/config';
+import { BOB_THROW, BUZZ, DT, FALL, FLOW, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, RING, SIREN } from '../src/config';
 import { Game, NO_INPUT, type Input, type SimEvent } from '../src/sim/game';
 
 const run = (g: Game, input: Partial<Input>, seconds: number, seen: SimEvent[] = []) => {
@@ -349,5 +349,102 @@ describe('the cousin minds the merchandise', () => {
     expect(g.banked).toBeGreaterThan(0);
     g.raccoon.carry = Array(NAG_EVERY - 1).fill('regular');
     for (let i = 1; i < NAG_EVERY; i++) expect(nags(smashOne())).toBe(0);
+  });
+});
+
+describe('Bob throws back', () => {
+  /** Bob mid-chase on the floor, you up on a high board in his beam. */
+  const upHigh = () => {
+    const g = store();
+    letBobIn(g);
+    stand(g, 1300, 230);
+    g.bob.state = 'chase';
+    g.bob.x = 1195;
+    g.bob.dir = 1;
+    return g;
+  };
+
+  it('when you are up out of pole reach, he grabs a bottle off a shelf, winds up, and throws it at you', () => {
+    const g = upHigh();
+    const onShelves = g.bottles.filter((b) => b.state === 'shelf').length;
+    const seen = run(g, {}, BOB_THROW.windup * 0.5);
+    expect(seen.some((e) => e.type === 'bobWindup')).toBe(true);
+    expect(g.bob.holding).not.toBeNull();
+    expect(g.bottles.filter((b) => b.state === 'shelf').length).toBe(onShelves - 1);
+    const later = run(g, {}, BOB_THROW.windup + BOB_THROW.maxFlight + 0.2);
+    expect(later.some((e) => e.type === 'bobThrow')).toBe(true);
+    expect(later.some((e) => e.type === 'hit')).toBe(true); // stood still: it lands
+    expect(g.raccoon.health).toBe(100 - HIT.damage);
+  });
+
+  it('moving after the wind-up dodges it, and the miss smashes as your Mess', () => {
+    const g = upHigh();
+    run(g, {}, BOB_THROW.windup + 0.05); // he's let go
+    const mess = g.mess;
+    g.raccoon.x = 1420; // stepped along the board
+    const after = run(g, {}, BOB_THROW.maxFlight + 0.5);
+    expect(after.some((e) => e.type === 'hit')).toBe(false);
+    expect(after.some((e) => e.type === 'smash')).toBe(true);
+    expect(g.mess).toBeGreaterThan(mess);
+  });
+
+  it("he doesn't throw when he can reach you with the pole", () => {
+    const g = store();
+    letBobIn(g);
+    stand(g, 1300, 500);
+    g.bob.state = 'chase';
+    g.bob.x = 1150;
+    g.bob.dir = 1;
+    const seen = run(g, {}, 0.5);
+    expect(seen.some((e) => e.type === 'bobWindup')).toBe(false);
+  });
+
+  it('knock him down mid wind-up and he drops it', () => {
+    const g = upHigh();
+    run(g, {}, BOB_THROW.windup * 0.5);
+    expect(g.bob.holding).not.toBeNull();
+    (g as unknown as { knockBob(): void }).knockBob(); // as if your bottle had hit him
+    expect(g.bob.holding).toBeNull();
+    const seen = run(g, {}, 1);
+    expect(seen.some((e) => e.type === 'bobThrow')).toBe(false);
+    expect(seen.some((e) => e.type === 'smash')).toBe(true);
+  });
+});
+
+describe('the scrubber snitches', () => {
+  it('roll into it before Bob is due and the siren brings him in early, straight for it', () => {
+    const g = store();
+    g.scrub.x = 1300;
+    g.scrub.dir = 1;
+    expect(g.bob.state).toBe('outside');
+    stand(g, 1240, 500);
+    const seen = run(g, { right: true }, 0.4);
+    expect(seen.some((e) => e.type === 'siren')).toBe(true);
+    expect(seen.some((e) => e.type === 'ring' && e.r === RING.siren)).toBe(true);
+    expect(g.scrub.state).toBe('alarm');
+    run(g, {}, 0.1);
+    expect(g.bob.state).toBe('investigate');
+    expect(Math.abs(g.bob.target - g.scrub.x)).toBeLessThan(80);
+  });
+
+  it('with Bob already inside, the siren pulls him to it', () => {
+    const g = store();
+    letBobIn(g);
+    g.bob.x = 2300;
+    g.scrub.x = 1300;
+    stand(g, 1240, 500);
+    run(g, { right: true }, 0.4);
+    expect(g.bob.state).toBe('investigate');
+  });
+
+  it('it only goes off once per cooldown', () => {
+    const g = store();
+    g.scrub.x = 1300;
+    stand(g, 1240, 500);
+    const seen = run(g, { right: true }, 0.4);
+    run(g, {}, SIREN.time + 0.1);
+    stand(g, g.scrub.x - 40, 500);
+    seen.push(...run(g, { right: true }, 0.5));
+    expect(seen.filter((e) => e.type === 'siren').length).toBe(1);
   });
 });

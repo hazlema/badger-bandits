@@ -1,24 +1,114 @@
 # Badger Bandits: night 1
 
-A raccoon heist, built from `design.md` (a copy of the idea-board export, 2026-11-06).
-This is a vertical slice: night 1 only, from the roof tutorial to the report card.
+A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
+the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
+
+This is a vertical slice: night 1 only, from the roof to the report card.
+
+## Running it
+
+You need Node 20.19 or newer (22+ is fine).
 
 ```
-npm run dev       # play at http://localhost:5173 (add ?store to skip the roof and crawlspace)
-npm test          # Vitest: rules, Bob's beam, bottles and throws, and a full playthrough on real inputs
-npm run build     # dist/
+npm install
+npm run dev       # then open http://localhost:5173
 ```
+
+Add `?store` to the URL (http://localhost:5173/?store) to skip the roof and crawlspace and start in the store.
+`npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
+
+## How to play
+
+### The job
+
+Get in, grab bottles, and **hand them up to your cousin at the ceiling hole**. Handing up is the only way loot
+is safe. Then **climb out through the hole** before the night ends. The clock in the top right counts down to
+dawn (about 5 minutes). Get caught, or still be inside at dawn, and you lose everything you hadn't handed up.
+
+### Getting in (the tutorial)
+
+1. **Roof:** run, jump the AC unit, climb the ivy trellis (hold ↑), and press **E** at the vent to pry it up.
+2. **Crawlspace:** press **E** at the wires to chew through them. That kills the store's power.
+3. Walk on and you drop through a ceiling tile into the store, onto the back shelf right under the hole.
+
+### Controls
 
 | | Keyboard | Gamepad |
 |---|---|---|
-| Move | arrows or WASD (↓ on a shelf hops down to the board below; ↑ climbs the roof trellis) | stick or d-pad |
-| Jump | Space or Z | A |
-| Grab (take the highlighted bottle, drink, hand up, use) | E or X | X |
-| Throw: hold +↑ (or nothing) to lob, +↓ drop, +forward roll | F or C | B |
-| Switch the ready item | Q or V | LB / RB |
+| Move | ← → or A D | stick or d-pad |
+| Jump (up to the next shelf board) | Space or Z | A |
+| Hop down through the board you're on | ↓ or S | Down |
+| Grab: take the highlighted bottle, drink a spill, hand up at the hole, use things | E or X | X |
+| Throw (see below) | F or C | B |
+| Switch which carried bottle you'll throw | Q or V | LB / RB |
 | Hoot across a carried bottle | R or B | Y |
-| Climb out (at the hole) / play dead (in the plush) | ↑ / ↓ | Up / Down |
-| Pause (Resume or Quit to title), mute all, music on/off | Esc, M, N | Start |
+| Climb out (at the hole) | ↑ or W | Up |
+| Play dead (on the plush display) | ↓ or S | Down |
+| Pause, mute everything, music on/off | Esc, M, N | Start |
+
+**Throwing:** tap or hold **F**. Holding it shows a dotted arc that swings between short and long; let go when
+it's where you want it. **F + ↓** drops a bottle straight down off the shelf you're on, which is great when
+someone is underneath. **F + → or ←** rolls one along the shelf or floor like a bowling ball. If a shelf bottle is
+highlighted in front of you, Throw uses that one; otherwise it throws the bottle with the gold ring in your HUD
+slots (Q picks which).
+
+### Scoring
+
+- **Loot:** minis are worth 1, regular bottles 3, golden minis 5. The two specials are worth **15**: the
+  **rum captain** (there are 4) and the glowing **blue curaçao** (4). Go for those.
+- **Buzz:** smash a bottle on the floor and you can lap up the spill (E). Each sip is a Buzz step, up to 5, and
+  Buzz **multiplies everything you score** (x1.5, x2 … up to x3.5). The catch: you get slower and wobblier, your
+  aim sways, and from step 3 you get hiccups. Every third hiccup pops a bottle out of your paws. Getting hit
+  costs a Buzz step and makes you drop a bottle.
+- **Mess:** every bottle that smashes scores Mess (half its value, times your Buzz). Mess only counts if you climb
+  out. Bob's missed throws count as your Mess too, because the store blames the raccoon.
+- **Your night score** is what you banked, plus Mess and anything still in your paws if you climb out. If you're
+  caught, only what you banked counts. The report card grades it as a percentage of the night's target:
+  **A** from 90%, B 80%, C 70%, D 60%, F below.
+
+### Who's after you
+
+- **The floor scrubber** patrols the floor. It races to any crash and slurps up spills before you can drink them.
+  **Don't touch it:** bump into it and it sets off a siren that calls Bob over, and brings him in early if he
+  isn't there yet. Knock it over with a bottle and it's out for 4 seconds.
+- **Officer Bob** comes in the front door about a third of the way through the night and searches with his
+  flashlight. If the beam lands on you, he shouts and chases. If his catch pole reaches you, you're caught.
+  - **Hide:** shelf ends and the counter block his beam. Up close, get up high, above where he can point it. Or
+    dive onto the plush display and press **↓** to play dead (only works if he didn't see you dive).
+  - **He throws back:** if you're up a shelf where his pole can't reach, he grabs a bottle and lobs it at you.
+    Watch for the raised bottle and move.
+  - **Fight back:** a bottle on his head knocks him down for a moment. Throw one, drop one on him, or just run
+    along a shelf above him and knock one off onto him.
+- **Your health** is the green bar. A hit costs 5%. A fall from the high shelves to the floor knocks you out for
+  a few seconds and costs 5%. At 0 you're too sore to run and Bob scoops you up.
+
+### Things to try
+
+- **Hoot (R)** across a carried bottle: a foghorn noise that pulls Bob and the scrubber to you. Use it as a lure
+  while you're somewhere safe.
+- **Rum captain spill:** drink it for 30 s of sea legs, no wobble.
+- **Blue curaçao spill:** step in it and you leave glowing paw prints that the scrubber follows.
+- **The counter:** spin the mini-bottle rack for minis (sometimes a golden one), and take the tote bag to carry 8
+  instead of 5.
+- The cousin will tell you off if you smash too much without handing anything up.
+
+### Testing notes
+
+**The night log:** on the report card, press **L** (Select on a gamepad) to flip it over. It lists everything that
+scored or cost you, with times: each hand-up with its Buzz multiplier, drinks, hits and what caused them, falls,
+sirens, Bob's arrival, the Mess total, and what being caught cost you. The same log is printed to the browser
+console (F12), so you can copy it and send it over.
+
+The shelves are the same every run, so you can learn the store. When something feels off, note what you were doing,
+roughly when in the night, and what you expected. Most useful of all: what was confusing, what felt unfair,
+and what was the most fun.
+
+## For developers
+
+```
+npm test          # Vitest: rules, Bob's beam, bottles and throws, and a full playthrough on real inputs
+npm run build     # dist/
+```
 
 - `src/config.ts` holds every tuning number. `(design)` values come from the board and `(guess)` values are the builder's placeholders.
 - `src/sim/` is a deterministic 60 Hz simulation with no DOM. `src/render/` is Canvas 2D and `src/audio.ts` is a Web Audio
@@ -56,11 +146,11 @@ Agreed with the host before this pass:
   hisses "Pssst! Don't smash ALL the merchandise!" (or one of two others). A hand-up starts the count over. That
   line replaces the usual "Smash it!" cheer on that crash. The count is `NAG_EVERY`.
 
-- **Letter grades** (host): F, D, C, B and A on the board's cut points (half the target score, the target, 1.5x, 2x),
-  in place of Clean getaway through Poor life choices. A and B are green, C and D yellow, F red. The card shows the
-  letter in a badge next to how much of the store you got away with ("29% of the store"). That's the base value of
-  what you handed up, plus your paws if you escaped, over what the shelves and the mini rack held at opening (356 on
-  night 1). Buzz doesn't inflate it. The word "par" no longer appears on screen.
+- **Letter grades on the school scale** (host): the card shows your night score as a percentage of the night's
+  target, with the letter it earns: A from 90%, B 80%, C 70%, D 60%, F below. A and B are green, C and D yellow,
+  F red. The target is 300 on night 1 (`NIGHT.target`), set from the host's playtest scores of 245 and 300. It
+  replaces the board's par of 80, which the 5x specials made far too easy, and the board's half/1x/1.5x/2x cut
+  points. The word "par" doesn't appear on screen, and the HUD bar runs 0 to 100% with the letters at their marks.
 - **Every popup is wood paneling** (host). The report card, the shelter slip and the pause menu all draw through
   `popup()` in `src/render/paint.ts`, and their text and line colours come from `POPUP` next to it, so restyling
   popups is one change. The shelter slip keeps its form-style header and the red CAUGHT stamp. The HUD panels and
@@ -70,6 +160,17 @@ Agreed with the host before this pass:
   boards (the jump went from about 90 px to about 124 px so it reliably reaches the next board, including the 100 px
   step up to the hole board), and ↓ on a board is a little hop that drops you through it to the board below. The roof
   trellis is a real ladder you can see, so it still climbs, and a climb there can still slip at high Buzz.
+- **Bob throws back** (host, 2026-11-06): mid-chase, if you're up a shelf out of pole reach and in his beam, he
+  grabs the nearest bottle he can reach off a shelf (within 140 px, no higher than 200 px), holds it over his head
+  for 0.5 s, then lobs it at where you are at that moment. Moving after the wind-up dodges it. A hit is the usual
+  5% and knockback, which can throw you off a high board into a fall knockout. A miss smashes and counts as your
+  Mess, since the store blames the raccoon. His bottles can't hit him. He throws at most every 2.4 s, and if he's
+  knocked down or gives up mid wind-up, he drops it. With nothing on a shelf near him, he doesn't throw.
+- **The scrubber snitches** (host, 2026-11-06): roll into it (or let it rush into you) on the floor and it sets
+  off a 3 s siren, the biggest noise ring there is (1000 px). Bob comes to it if he's inside, and if he isn't due
+  yet, the siren brings him in early and he heads straight for it. It can only go off once every 8 s. Knocking
+  it over with a bottle still buys 4 s of quiet. All the numbers are in `BOB_THROW` and `SIREN` in
+  `src/config.ts`.
 
 Smaller calls:
 

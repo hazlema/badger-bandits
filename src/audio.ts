@@ -172,8 +172,8 @@ export class Sound {
     if (!this.ctx) return;
     const x =
       e.type === 'smash' || e.type === 'ring' ? e.x
-      : ['door', 'shout', 'mutter', 'lost'].includes(e.type) || (e.type === 'say' && e.who === 'bob') ? g?.bob.x ?? null
-      : e.type === 'beep' || e.type === 'slurp' ? g?.scrub.x ?? null
+      : ['door', 'shout', 'mutter', 'lost', 'bobWindup', 'bobThrow'].includes(e.type) || (e.type === 'say' && e.who === 'bob') ? g?.bob.x ?? null
+      : e.type === 'beep' || e.type === 'slurp' || e.type === 'siren' ? g?.scrub.x ?? null
       : null;
     this.at(x, g);
     this.oneShot(e);
@@ -282,6 +282,17 @@ export class Sound {
       case 'beep':
         this.tone(1500, 0.07, 'square', 0.05);
         this.tone(1900, 0.07, 'square', 0.05, 1, 0.1);
+        break;
+      case 'siren':
+        // Two-tone wail for the length of the alarm.
+        for (let i = 0; i < 12; i++) this.tone(i % 2 ? 720 : 960, 0.24, 'square', 0.09, i % 2 ? 1.3 : 0.75, i * 0.25);
+        break;
+      case 'bobWindup':
+        this.tone(140, 0.3, 'sawtooth', 0.12, 1.3); // "hnngh"
+        break;
+      case 'bobThrow':
+        this.noise(0.25, 0.2, 700);
+        this.tone(110, 0.2, 'sawtooth', 0.1, 0.7);
         break;
       case 'slurp':
         this.tone(220, 0.45, 'sawtooth', 0.08, 2.5);

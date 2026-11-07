@@ -37,6 +37,7 @@ let view = new WorldView();
 let mode: 'title' | 'play' | 'paused' | 'card' = skipTutorial ? 'play' : 'title';
 front.classList.toggle('hidden', mode !== 'title');
 let pauseChoice = 0; // 0 Resume, 1 Quit to title
+let cardPage = 0; // 0 the report card, 1 the night log on its back
 let scale = 1;
 let offX = 0;
 let offY = 0;
@@ -93,6 +94,7 @@ function frame(now: number) {
       mode = 'play';
       front.classList.add('hidden');
     }
+    else if (mode === 'card' && (m === 'KeyL' || m === 'PadSelect')) cardPage = 1 - cardPage;
     else if (mode === 'card' && (confirm || m === 'PadStart')) restart('title');
     else if (mode === 'play' && (m === 'Escape' || m === 'KeyP' || m === 'PadStart')) {
       mode = 'paused';
@@ -115,6 +117,8 @@ function frame(now: number) {
       acc -= DT;
       if (game.phase === 'over') {
         mode = 'card';
+        cardPage = 0;
+        logNight();
         break;
       }
     }
@@ -133,7 +137,7 @@ function frame(now: number) {
   view.draw(ctx, game, time, keys());
   drawHud(ctx, game, time);
   if (mode === 'paused') drawPause(ctx, pauseChoice, controls.usingPad);
-  if (mode === 'card') drawCard(ctx, game, time, controls.usingPad);
+  if (mode === 'card') drawCard(ctx, game, time, controls.usingPad, cardPage);
   if (mode === 'title' && ready) {
     const say = `Press ${controls.usingPad ? 'A' : 'Space'} to begin`;
     if (frontPrompt.textContent !== say) frontPrompt.textContent = say;
@@ -142,6 +146,13 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+/** The night log in the console too, so a tester can copy it. */
+function logNight() {
+  const r = game.result!;
+  console.log(`Badger Bandits night: ${r.escaped ? 'climbed out' : `caught (${r.reason})`}, score ${r.score.toFixed(1)} of ${r.target} = ${Math.round((r.score / r.target) * 100)}% ${r.grade}`);
+  console.table(game.log.map((e) => ({ time: `${Math.floor(e.t / 60)}:${Math.floor(e.t % 60).toString().padStart(2, '0')}`, what: e.text, points: e.pts === undefined ? '' : +e.pts.toFixed(1) })));
+}
 
 function expose() {
   (window as unknown as { __plc: unknown }).__plc = { game, restart, sound };

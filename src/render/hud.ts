@@ -137,11 +137,11 @@ function band(c: Ctx) {
 }
 
 function parBar(c: Ctx, g: Game) {
-  const par = NIGHT.par;
+  const target = NIGHT.target;
   const x = 260;
   const w = VIEW_W - x - 28;
   const by = BAND + 22;
-  const max = par * 2.25;
+  const max = target; // the bar runs 0 to 100%
   text(c, `banked ${fmt(g.banked)}`, x + w - 120, BAND + 12, 12, C.gold, 'right', 600);
   text(c, `at risk ${fmt(g.atRisk)}`, x + w, BAND + 12, 12, '#e0a070', 'right', 600);
   fillRR(c, x, by, w, 14, 7, '#1a181d');
@@ -166,7 +166,7 @@ function parBar(c: Ctx, g: Game) {
   // Grade marks: the letter each one starts.
   for (const gr of GRADES) {
     if (gr.at === 0) continue;
-    const mx = x + ((gr.at * par) / max) * w;
+    const mx = x + ((gr.at * target) / max) * w;
     c.fillStyle = C.cream;
     c.fillRect(mx - 1, by - 2, 2, 18);
     text(c, gr.name, mx, by + 27, 13, GRADE_COLOUR[gr.name], 'center', 700);
@@ -203,10 +203,11 @@ const REASONS: Record<string, string> = {
   sore: 'Too sore to run. Officer Bob just scooped you up.',
 };
 
-export function drawCard(c: Ctx, g: Game, time: number, pad: boolean) {
+export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) {
   const r = g.result!;
   c.fillStyle = 'rgba(15,10,18,0.7)';
   c.fillRect(0, 0, VIEW_W, VIEW_H);
+  if (page === 1) return drawLog(c, g, time, pad);
   const w = 520;
   const h = r.kept ? 450 : 420; // room for the "kept by animal control" row
   const x = (VIEW_W - w) / 2;
@@ -246,12 +247,12 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean) {
   // The grade bar, with each letter at the score it starts from.
   const bx = x + 40;
   const bw = w - 80;
-  const max = r.par * 2.25;
+  const max = r.target;
   fillRR(c, bx, sy + 20, bw, 12, 6, POPUP.well);
   fillRR(c, bx, sy + 20, Math.min(bw, (r.score / max) * bw), 12, 6, C.gold);
   for (const gr of GRADES) {
     if (!gr.at) continue;
-    const mx = bx + ((gr.at * r.par) / max) * bw;
+    const mx = bx + ((gr.at * r.target) / max) * bw;
     c.fillStyle = ink;
     c.fillRect(mx - 1, sy + 17, 2, 18);
     // a dark edge so green and yellow hold up on the wood
@@ -264,8 +265,8 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean) {
     c.strokeText(gr.name, mx, sy + 48);
     text(c, gr.name, mx, sy + 48, 14, GRADE_COLOUR[gr.name], 'center', 700);
   }
-  // The letter in a badge, with how much of the store you got away with beside it.
-  const share = `${Math.round(r.share * 100)}% of the store`;
+  // The letter in a badge, with the percentage it comes from beside it.
+  const share = `${Math.round((r.score / r.target) * 100)}%`;
   c.font = `600 20px ${FONT}`;
   const tw = c.measureText(share).width;
   const gx = VIEW_W / 2 - (64 + 18 + tw) / 2;
@@ -292,5 +293,37 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean) {
     text(c, 'CAUGHT', 0, 1, 34, withAlpha(GRADE_COLOUR.F, 0.95), 'center', 700);
     c.restore();
   }
-  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'Press A for the title screen' : 'Press Space for the title screen', VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'A for the title screen · Select for the night log' : 'Space for the title screen · L for the night log', VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+}
+
+/** The back of the report card: everything that scored or cost you, in order. */
+function drawLog(c: Ctx, g: Game, time: number, pad: boolean) {
+  const r = g.result!;
+  const w = 600;
+  const h = 470;
+  const x = (VIEW_W - w) / 2;
+  const y = (VIEW_H - h) / 2;
+  const { ink, dim } = POPUP;
+  popup(c, x, y, w, h, 0.008);
+  text(c, 'Night log', x + 36, y + 36, 26, ink, 'left', 700);
+  text(c, `${fmt(r.score)} of ${r.target} · ${Math.round((r.score / r.target) * 100)}% · ${r.grade}`, x + w - 36, y + 38, 17, GRADE_COLOUR[r.grade], 'right', 700);
+  const rows = 15;
+  const lines = g.log.length > rows ? g.log.slice(g.log.length - (rows - 1)) : g.log;
+  let ly = y + 78;
+  if (g.log.length > rows) {
+    text(c, `… ${g.log.length - lines.length} earlier`, x + 36, ly, 13, dim, 'left', 500);
+    ly += 22;
+  }
+  for (const e of lines) {
+    const m = Math.floor(e.t / 60);
+    const sec = Math.floor(e.t % 60).toString().padStart(2, '0');
+    text(c, `${m}:${sec}`, x + 36, ly, 13, dim, 'left', 600);
+    text(c, e.text, x + 84, ly, 14, ink, 'left', 500);
+    if (e.pts !== undefined) text(c, `+${fmt(e.pts)}`, x + w - 36, ly, 14, C.gold, 'right', 700);
+    c.fillStyle = POPUP.rule;
+    c.fillRect(x + 36, ly + 11, w - 72, 1);
+    ly += 22;
+  }
+  if (!g.log.length) text(c, 'Nothing happened. Suspicious.', VIEW_W / 2, y + h / 2, 16, dim, 'center', 500);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'Select to flip back · A for the title screen' : 'L to flip back · Space for the title screen', VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
 }

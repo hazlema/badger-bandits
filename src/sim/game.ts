@@ -2,7 +2,7 @@
 // and audio layers read state and the per-step `events` list.
 
 import {
-  BOB, BUZZ, DT, FALL, FLOW, GRADES, HIT, KNOCKDOWN, LOOT, MESS_FACTOR, NAG_EVERY, NIGHT, PRINTS, RACCOON, RACK, RING, SCRUBBER,
+  BOB, BOB_THROW, BUZZ, DT, FALL, FLOW, GRADES, HIT, KNOCKDOWN, LOOT, MESS_FACTOR, NAG_EVERY, NIGHT, PRINTS, RACCOON, RACK, RING, SCRUBBER, SIREN,
   SEA_LEGS, THROW, TILE_MESS,
 } from '../config';
 import { crawlLevel, roofLevel, storeLevel, type ItemKind, type Level, type Rect } from './level';
@@ -30,7 +30,8 @@ export type SimEvent =
       type:
         | 'jump' | 'land' | 'grab' | 'sip' | 'hiccupWarn' | 'hiccup' | 'slip' | 'hit' | 'vent' | 'wires'
         | 'door' | 'shout' | 'mutter' | 'lost' | 'beep' | 'slurp' | 'spin' | 'golden' | 'tote'
-        | 'playDead' | 'escaped' | 'throw' | 'roll' | 'bonk' | 'hoot' | 'swap' | 'seaLegs' | 'bluePaws' | 'ko' | 'knock';
+        | 'playDead' | 'escaped' | 'throw' | 'roll' | 'bonk' | 'hoot' | 'swap' | 'seaLegs' | 'bluePaws' | 'ko' | 'knock'
+        | 'bobWindup' | 'bobThrow' | 'siren';
     };
 
 export interface Raccoon {
@@ -75,12 +76,15 @@ export interface Bottle {
   state: 'shelf' | 'air' | 'rolling' | 'gone';
   vx: number; vy: number;
   safeT: number; // can't hit the raccoon yet (it just launched this one)
+  owner?: 'bob'; // Bob threw it, so it can't hit Bob
   lane?: { x1: number; x2: number; y: number; board: number }; // what a rolling bottle rolls on
 }
 export interface Spill { id: number; x: number; y: number; kind: ItemKind; x0: number; flow: number }
 export interface Print { x: number; y: number; age: number; facing: 1 | -1 }
 export interface Ring { x: number; y: number; r: number; age: number }
 export interface Say { who: Who; text: string; ttl: number }
+/** One line of the night log on the back of the report card: what happened, and the points if it scored. */
+export interface LogEntry { t: number; text: string; pts?: number }
 
 export interface Bob {
   state: 'outside' | 'search' | 'investigate' | 'look' | 'shout' | 'chase' | 'confused' | 'down';
@@ -94,10 +98,14 @@ export interface Bob {
   target: number;
   mutterCd: number;
   wasChasing: boolean; // knocked down mid-chase: he gets up still chasing
+  holding: ItemKind | null; // the bottle he's about to throw
+  windT: number; // s left of the wind-up
+  throwCd: number; // s until he can throw again
 }
 
 export interface Scrubber {
-  x: number; dir: 1 | -1; state: 'patrol' | 'rush' | 'slurp' | 'down'; target: number; t: number; beepT: number;
+  x: number; dir: 1 | -1; state: 'patrol' | 'rush' | 'slurp' | 'down' | 'alarm'; target: number; t: number; beepT: number;
+  alarmCd: number; // s before it can set off the siren again
   spill: number; // id of the spill it's chasing, or 0
 }
 
@@ -109,8 +117,7 @@ export interface Result {
   paws: number;
   coins: number;
   score: number;
-  par: number;
-  share: number; // 0..1 of the store's stock you got away with
+  target: number; // the score that counts as 100%
   grade: string;
   kept: { mess: number; items: number; coins: number } | null;
   time: number;
@@ -128,12 +135,15 @@ export function multFor(step: number): number {
   return 1 + BUZZ.perStep * step;
 }
 
-export function gradeFor(score: number, par: number): string {
-  for (const g of GRADES) if (score >= g.at * par) return g.name;
+export function gradeFor(score: number, target: number): string {
+  for (const g of GRADES) if (score >= g.at * target) return g.name;
   return GRADES[GRADES.length - 1].name;
 }
 
 const CHEERS = ['Chrr-chrr! Smash it!', 'Ha! Lovely crash!', 'Chrrrr! Again!', 'Ooh, that was a good one!'];
+const ENDINGS: Record<string, string> = { bob: "Bob's catch pole", dawn: 'still inside at dawn', sore: 'too sore to run' };
+const fmt1 = (n: number) => (Math.round(n * 10) / 10).toString();
+const THROW_LINES = ['Get down from there!', 'Come down here, you!', 'Take THAT, trash panda!'];
 const SCOLDS = ['Chrr! Wasted!', 'Nooo, the good stuff!', 'Chrr… what a waste.'];
 const NAGS = ["Pssst! Don't smash ALL the merchandise!", 'Pssst. Those go in the bag, not on the floor.', "Psst! We can't sell puddles, cuz!"];
 const BIG: ItemKind[] = ['regular', 'golden', 'rum', 'curacao'];
@@ -150,13 +160,13 @@ export class Game {
   prints: Print[] = [];
   rings: Ring[] = [];
   says: Say[] = [];
+  log: LogEntry[] = [];
+  private smashes = { yours: 0, bobs: 0 }; // for the night log's Mess line
   events: SimEvent[] = [];
   bob: Bob;
   scrub: Scrubber;
   mess = 0;
   banked = 0;
-  stock = 0; // what everything on the shelves and the rack is worth at opening (no Buzz multiplier)
-  taken = 0; // the same measure, for what you've handed up
   wiresChewed = false;
   powerOut = false;
   toteTaken = false;
@@ -167,6 +177,7 @@ export class Game {
   result: Result | null = null;
   private prev: Input = NO_INPUT;
   private nextId = 1;
+  private alarmAt: number | null = null; // where the siren went off before Bob came in, so he heads there
   private sayCd: Record<Who, number> = { cousin: 0, bob: 0, raccoon: 0, scrubber: 0 };
   private dawnWarned = false;
   private smashRun = 0; // bottles smashed since the last hand-up
@@ -181,9 +192,9 @@ export class Game {
     };
     this.bob = {
       state: 'outside', x: 0, dir: -1, goal: 0, t: 0, sweepT: 0, beam: 0, lostT: 0, target: 0, mutterCd: 0,
-      wasChasing: false,
+      wasChasing: false, holding: null, windT: 0, throwCd: 0,
     };
-    this.scrub = { x: 0, dir: 1, state: 'patrol', target: 0, t: 0, beepT: 4, spill: 0 };
+    this.scrub = { x: 0, dir: 1, state: 'patrol', target: 0, t: 0, beepT: 4, spill: 0, alarmCd: 0 };
     this.phase = 'roof';
     this.level = roofLevel();
     if (opts.start === 'store') {
@@ -513,6 +524,7 @@ export class Game {
     const R = this.raccoon;
     if (this.phase !== 'store') return;
     R.health = Math.max(0, R.health - FALL.damage);
+    this.note(`Fell off a high shelf: knocked out, −${FALL.damage}% health`);
     R.state = 'ko';
     R.stateT = FALL.koTime;
     R.aimT = null;
@@ -589,16 +601,14 @@ export class Game {
   private grab() {
     const R = this.raccoon;
     const L = this.level;
-    const front = R.x + R.facing * RACCOON.reach;
-
-    if (L.vent && this.near(L.vent, front)) {
+    if (L.vent && this.reaches(L.vent)) {
       this.emit({ type: 'vent' });
       this.level = crawlLevel();
       this.phase = 'crawl';
       this.place(this.level.start.x, this.level.start.y);
       return;
     }
-    if (L.wires && !this.wiresChewed && this.near(L.wires, front, 20)) {
+    if (L.wires && !this.wiresChewed && this.reaches(L.wires, 20)) {
       this.wiresChewed = true;
       this.powerOut = true;
       this.emit({ type: 'wires' });
@@ -607,8 +617,13 @@ export class Game {
     }
     if (this.atHole() && R.carry.length) {
       const value = this.carryValue() * this.mult;
+      const n = R.carry.length;
+      const specials = R.carry.filter((k) => k === 'rum' || k === 'curacao').length;
+      this.note(
+        `Handed up ${n} bottle${n === 1 ? '' : 's'}${specials ? ` (${specials} special)` : ''}: ${this.carryValue()} at ×${this.mult} Buzz`,
+        value,
+      );
       this.banked += value;
-      this.taken += this.carryValue();
       this.smashRun = 0;
       R.carry = [];
       this.fixReady();
@@ -637,6 +652,7 @@ export class Game {
     if (spill) {
       this.spills = this.spills.filter((s) => s !== spill);
       this.setBuzz(R.buzz + 1);
+      this.note(`Drank a spill: Buzz now ×${this.mult}`);
       R.state = 'sip';
       R.stateT = 0.55;
       this.emit({ type: 'sip' });
@@ -655,6 +671,20 @@ export class Game {
       R.ready = R.carry.length - 1;
       this.emit({ type: 'grab' });
     }
+  }
+
+  /**
+   * Can the raccoon get its paws on r? Its body plus its reach in front has to
+   * overlap r (padded) side to side, and be level with it. Standing on top of
+   * the thing counts, whichever way you face. The prompts use this too, so
+   * what the prompt offers is what Grab does.
+   */
+  reaches(r: Rect, pad = 12): boolean {
+    const R = this.raccoon;
+    const front = R.x + R.facing * RACCOON.reach;
+    const x1 = Math.min(R.x - R.w / 2, front);
+    const x2 = Math.max(R.x + R.w / 2, front);
+    return x2 >= r.x - pad && x1 <= r.x + r.w + pad && R.y >= r.y - 4 && R.y - R.h <= r.y + r.h + 4;
   }
 
   private near(r: Rect, x: number, pad = 12): boolean {
@@ -862,13 +892,13 @@ export class Game {
     b.y += b.vy * dt;
     if (b.y < this.level.ceilingY) b.vy = Math.abs(b.vy) * 0.3;
     if (b.x < 0 || b.x > this.level.width) b.vx = -b.vx * 0.4;
-    const hit = this.airHit(b.x, prev, b.y, b.safeT);
+    const hit = this.airHit(b.x, prev, b.y, b.safeT, b.owner);
     if (!hit) return;
     // A bottle that hits someone or something damages it; one that hits nothing makes noise.
     switch (hit.what) {
       case 'raccoon':
         this.smash(b, this.surfaceBelow(b.x, b.y), 0);
-        this.hit(b.vx >= 0 ? 1 : -1);
+        this.hit(b.vx >= 0 ? 1 : -1, b.owner === 'bob' ? "Bob's bottle" : 'a falling bottle');
         break;
       case 'bob':
         this.smash(b, this.surfaceBelow(b.x, b.y), 0);
@@ -890,14 +920,14 @@ export class Game {
   }
 
   /** What an airborne bottle moving from y0 to y1 at x runs into, if anything. */
-  private airHit(x: number, y0: number, y1: number, safeT: number): AirHit | null {
+  private airHit(x: number, y0: number, y1: number, safeT: number, owner?: 'bob'): AirHit | null {
     const L = this.level;
     const R = this.raccoon;
     const inside = (rx: number, ry: number, rw: number, rh: number) => x >= rx && x <= rx + rw && y1 - 8 >= ry && y1 - 8 <= ry + rh;
     if (L.id === 'store') {
       if (safeT <= 0 && R.state !== 'playdead' && inside(R.x - R.w / 2, R.y - R.h, R.w, R.h)) return { what: 'raccoon' };
       const B = this.bob;
-      if (this.bobInside && B.state !== 'down' && inside(B.x - BOB.w / 2, L.floorY - BOB.h, BOB.w, BOB.h)) return { what: 'bob' };
+      if (owner !== 'bob' && this.bobInside && B.state !== 'down' && inside(B.x - BOB.w / 2, L.floorY - BOB.h, BOB.w, BOB.h)) return { what: 'bob' };
       const S = this.scrub;
       if (S.state !== 'down' && inside(S.x - SCRUBBER.w / 2, L.floorY - SCRUBBER.h, SCRUBBER.w, SCRUBBER.h)) return { what: 'scrubber' };
       for (const d of [L.plush, L.rack]) if (d && inside(d.x, d.y, d.w, d.h)) return { what: 'display', y: y1 };
@@ -962,6 +992,8 @@ export class Game {
 
   /** Smash a bottle at surface y. `ring` 0 means it hit someone, so it makes no noise ring. */
   private smash(b: Bottle, y: number, ring?: number, ringY = y) {
+    if (b.owner === 'bob') this.smashes.bobs++;
+    else this.smashes.yours++;
     b.state = 'gone';
     b.board = -1;
     b.y = y;
@@ -1004,7 +1036,7 @@ export class Game {
     this.emit({ type: 'ring', x, y, r });
     const S = this.scrub;
     const floor = this.level.floorY;
-    if (S.state !== 'slurp' && S.state !== 'down' && Math.hypot(S.x - x, floor - 13 - y) <= r) {
+    if (S.state !== 'slurp' && S.state !== 'down' && S.state !== 'alarm' && Math.hypot(S.x - x, floor - 13 - y) <= r) {
       const [a, b] = this.level.scrubberRoute!;
       S.state = 'rush';
       S.target = Math.max(a, Math.min(b, x));
@@ -1029,10 +1061,16 @@ export class Game {
     const floor = this.level.floorY;
     const [a, b] = this.level.scrubberRoute!;
     const clamp = (x: number) => Math.max(a, Math.min(b, x));
+    S.alarmCd = Math.max(0, S.alarmCd - dt);
+    const touching = Math.abs(R.y - floor) < 2 && Math.abs(R.x - S.x) < (SCRUBBER.w + R.w) / 2 - 4;
     if (S.state === 'down') {
       S.t -= dt;
       if (S.t <= 0) S.state = 'patrol';
+    } else if (S.state === 'alarm') {
+      S.t -= dt;
+      if (S.t <= 0) S.state = 'patrol';
     } else if (S.state === 'patrol') {
+      if (touching && S.alarmCd <= 0) return this.siren();
       // Blue paw prints on the floor: it follows them, mopping as it goes.
       const print = this.prints
         .filter((p) => p.y === floor && p.x >= a && p.x <= b)
@@ -1063,8 +1101,11 @@ export class Game {
         S.state = 'slurp';
         S.t = SCRUBBER.slurpTime;
       }
-      // It bumps you off your feet if you're in its way on the floor.
-      if (Math.abs(R.y - floor) < 2 && Math.abs(R.x - S.x) < (SCRUBBER.w + R.w) / 2 - 4) this.hit(R.x >= S.x ? 1 : -1);
+      // It bumps you off your feet if you're in its way on the floor, and tells on you.
+      if (touching) {
+        this.hit(R.x >= S.x ? 1 : -1, 'the scrubber');
+        if (S.alarmCd <= 0) return this.siren();
+      }
     } else {
       S.t -= dt;
       this.slurpAt(S.x, 40);
@@ -1081,6 +1122,20 @@ export class Game {
     this.say('cousin', SCOLDS[Math.floor(this.rand() * SCOLDS.length)], 1.8);
   }
 
+  /** The snitch: a siren and the biggest noise ring there is. Before Bob's due, it brings him in. */
+  private siren() {
+    const S = this.scrub;
+    S.state = 'alarm';
+    S.t = SIREN.time;
+    S.alarmCd = SIREN.cooldown;
+    const floor = this.level.floorY;
+    this.emit({ type: 'siren' });
+    this.ring(S.x, floor - 13, RING.siren);
+    if (this.bob.state === 'outside') this.alarmAt = S.x;
+    this.note(this.bob.state === 'outside' ? 'You bumped the scrubber: siren, and it called Bob in early' : 'You bumped the scrubber: siren');
+    this.say('cousin', 'Chrr! The roomba is snitching!', 2.2);
+  }
+
   private knockScrubber() {
     const S = this.scrub;
     S.state = 'down';
@@ -1091,11 +1146,12 @@ export class Game {
 
   /* ---------------------------------------------------------------- hit */
 
-  hit(dir: number) {
+  hit(dir: number, cause = 'something') {
     const R = this.raccoon;
     if (R.invuln > 0 || this.phase !== 'store') return;
     R.health = Math.max(0, R.health - HIT.damage);
     const dropped = R.carry.pop();
+    this.note(`Hit by ${cause}: −${HIT.damage}% health${dropped ? ', dropped a bottle' : ''}${R.buzz > 0 ? ', lost a Buzz step' : ''}`);
     this.fixReady();
     if (dropped) {
       this.launch(dropped, R.x, R.y - R.h, -dir * 40, -160);
@@ -1125,13 +1181,20 @@ export class Game {
     B.mutterCd = Math.max(0, B.mutterCd - dt);
 
     if (B.state === 'outside') {
-      if (this.t < NIGHT.length * NIGHT.bobAt) return;
+      if (this.t < NIGHT.length * NIGHT.bobAt && this.alarmAt === null) return;
       B.state = 'search';
       B.x = this.level.door!.x + this.level.door!.w / 2;
       B.dir = -1;
       B.goal = 0;
       this.emit({ type: 'door' });
-      this.say('bob', 'Animal control! Anybody in here?', 2.6);
+      this.note('Officer Bob came in');
+      if (this.alarmAt !== null) {
+        // The siren called him in early, and he heads straight for it.
+        B.state = 'investigate';
+        B.target = Math.max(back, Math.min(front, this.alarmAt));
+        this.alarmAt = null;
+        this.say('bob', 'Alarm! Animal control, coming through!', 2.6);
+      } else this.say('bob', 'Animal control! Anybody in here?', 2.6);
       // Night 1 teaches play dead on his first entrance.
       this.say('cousin', 'Chrr-chrr! Animal control! Dive in the plush and play dead (↓)!', 6);
       this.plushGlow = 14;
@@ -1193,8 +1256,15 @@ export class Game {
         break;
       case 'chase': {
         B.dir = R.x >= B.x ? 1 : -1;
-        if (Math.abs(R.x - B.x) > BOB.poleReachX * 0.6) walk(R.x, BOB.chaseSpeed);
+        B.throwCd = Math.max(0, B.throwCd - dt);
+        if (B.windT > 0) {
+          // Winding up: he stands still with the bottle raised, then lets fly.
+          B.windT -= dt;
+          if (B.windT <= 0) this.bobThrow();
+        } else if (Math.abs(R.x - B.x) > BOB.poleReachX * 0.6) walk(R.x, BOB.chaseSpeed);
         this.aimAt();
+        const high = this.level.floorY - R.y > BOB.poleReachUp; // up on a shelf, out of pole reach
+        if (high && B.windT <= 0 && B.throwCd <= 0 && this.seen()) this.bobWindUp();
         if (this.seen()) B.lostT = 0;
         else B.lostT += dt;
         if (this.canPole()) {
@@ -1202,9 +1272,11 @@ export class Game {
           return;
         }
         if (B.lostT >= BOB.loseAfter) {
+          this.bobDrop();
           B.state = 'confused';
           B.t = 1.6;
           this.emit({ type: 'lost' });
+          this.note('Bob lost you');
           this.say('bob', "Huh. Where'd it go…", 2);
         }
         break;
@@ -1221,9 +1293,55 @@ export class Game {
     }
   }
 
+  /** He grabs the nearest bottle he can reach off a shelf and raises it to throw. */
+  private bobWindUp() {
+    const B = this.bob;
+    const floor = this.level.floorY;
+    const b = this.bottles
+      .filter((b) => b.state === 'shelf' && Math.abs(b.x - B.x) <= BOB_THROW.grabRange && floor - b.y <= BOB_THROW.grabHeight)
+      .sort((p, q) => Math.abs(p.x - B.x) - Math.abs(q.x - B.x))[0];
+    if (!b) {
+      B.throwCd = 0.5; // nothing to hand: he looks again in a moment
+      return;
+    }
+    b.state = 'gone';
+    B.holding = b.kind;
+    B.windT = BOB_THROW.windup;
+    this.emit({ type: 'bobWindup' });
+    this.say('bob', THROW_LINES[Math.floor(this.rand() * THROW_LINES.length)], 1.6);
+  }
+
+  /** He lobs it at where you are now, so moving after the wind-up dodges it. */
+  private bobThrow() {
+    const B = this.bob;
+    const R = this.raccoon;
+    if (!B.holding) return;
+    const hx = B.x + B.dir * 14;
+    const hy = this.level.floorY - 104;
+    const dx = R.x - hx;
+    const dy = R.y - R.h / 2 - hy;
+    const T = Math.max(BOB_THROW.minFlight, Math.min(BOB_THROW.maxFlight, Math.abs(dx) / BOB_THROW.speed));
+    const vy = (dy - 0.5 * RACCOON.gravity * T * T) / T;
+    this.bottles.push({ id: this.nextId++, x: hx, y: hy, kind: B.holding, board: -1, state: 'air', vx: dx / T, vy, safeT: 0, owner: 'bob' });
+    B.holding = null;
+    B.throwCd = BOB_THROW.every;
+    this.emit({ type: 'bobThrow' });
+  }
+
+  /** Knocked down or giving up with a bottle in his hand: it falls and smashes. */
+  private bobDrop() {
+    const B = this.bob;
+    if (B.holding) {
+      this.bottles.push({ id: this.nextId++, x: B.x + B.dir * 14, y: this.level.floorY - 104, kind: B.holding, board: -1, state: 'air', vx: 0, vy: 0, safeT: 0, owner: 'bob' });
+    }
+    B.holding = null;
+    B.windT = 0;
+  }
+
   /** A bottle knocks him off his feet for a moment. Mid-chase, he gets up still chasing. */
   private knockBob() {
     const B = this.bob;
+    this.bobDrop();
     B.wasChasing = B.state === 'chase' || B.state === 'shout';
     B.state = 'down';
     B.t = KNOCKDOWN.bob;
@@ -1233,6 +1351,7 @@ export class Game {
 
   private spot() {
     const B = this.bob;
+    this.note('Bob spotted you');
     B.state = 'shout';
     B.t = BOB.shoutTime;
     this.emit({ type: 'shout' });
@@ -1321,7 +1440,6 @@ export class Game {
     this.phase = 'store';
     this.t = 0;
     this.bottles = this.level.bottles.map((b) => ({ ...b, id: this.nextId++, state: 'shelf', vx: 0, vy: 0, safeT: 0 }));
-    this.stock = this.bottles.reduce((s, b) => s + LOOT[b.kind], 0) + this.rack.stock * LOOT.mini;
     this.scrub.x = 1300;
     this.scrub.dir = -1;
     this.place(this.level.start.x, this.level.ceilingY + this.raccoon.h + 2);
@@ -1340,7 +1458,15 @@ export class Game {
     const paws = escaped ? this.carryValue() * this.mult : 0;
     const mess = escaped ? this.mess : 0;
     const score = this.banked + mess + paws;
-    const taken = this.taken + (escaped ? this.carryValue() : 0);
+    const made = `${this.smashes.yours} smash${this.smashes.yours === 1 ? '' : 'es'}${this.smashes.bobs ? ` + ${this.smashes.bobs} of Bob's` : ''}`;
+    if (escaped) {
+      if (this.mess) this.note(`Mess from ${made}`, this.mess);
+      if (paws) this.note(`Climbed out with ${R.carry.length} in your paws`, paws);
+      this.note('Climbed out');
+    } else {
+      this.note(`Caught: ${ENDINGS[reason] ?? reason}`);
+      if (this.mess || R.carry.length) this.note(`Lost: ${fmt1(this.mess)} Mess (${made}) and ${R.carry.length} in your paws`);
+    }
     this.result = {
       escaped,
       reason,
@@ -1349,14 +1475,19 @@ export class Game {
       paws,
       coins: 0,
       score,
-      par: NIGHT.par,
-      share: this.stock ? Math.min(1, taken / this.stock) : 0,
-      grade: gradeFor(score, NIGHT.par),
+      target: NIGHT.target,
+      grade: gradeFor(score, NIGHT.target),
       kept: escaped ? null : { mess: this.mess, items: R.carry.length, coins: 0 },
       time: this.t,
     };
     this.phase = 'over';
     this.emit(escaped ? { type: 'escaped' } : { type: 'caught', reason });
+  }
+
+  /** Add a line to the night log (store only; the roof and crawlspace don't score). */
+  private note(text: string, pts?: number) {
+    if (this.phase !== 'store') return;
+    this.log.push({ t: this.t, text, pts });
   }
 
   say(who: Who, text: string, ttl = 2) {

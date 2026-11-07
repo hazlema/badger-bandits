@@ -72,12 +72,12 @@ export const MESS_FACTOR = 0.5; // Mess = half loot value (design)
 export const TILE_MESS = 1; // (design)
 export const NAG_EVERY = 4; // smashed bottles in a row, without a hand-up, before the cousin hisses at you (host, 2026-11-06; count is a guess)
 
-export const RING = { small: 170, big: 320, biggest: 520, hoot: 700 }; // noise radii px (guess)
+export const RING = { small: 170, big: 320, biggest: 520, hoot: 700, siren: 1000 }; // noise radii px (guess)
 
 export const NIGHT = {
   length: 300, // s from the tile crash to dawn (design: ~5 min on night 1)
   bobAt: 1 / 3, // (design)
-  par: 80, // (design)
+  target: 300, // the night score that counts as 100% (host's playtests scored 245 and 300; was par 80) (guess)
   dawnLightFrom: 0.55, // fraction of the night when the sunlight starts creeping (guess)
 };
 
@@ -106,6 +106,21 @@ export const BOB = {
   shoutTime: 0.6, // he freezes and shouts before chasing
 };
 
+// Bob throws (host, 2026-11-06): mid-chase, when you're up out of pole reach, he grabs a bottle off a shelf
+// near him and lobs it at you. All guesses.
+export const BOB_THROW = {
+  windup: 0.5, // s he stands with the bottle raised, so you can see it coming
+  every: 2.4, // s between throws
+  grabRange: 140, // px either side of him he'll grab a bottle from
+  grabHeight: 200, // px above the floor he can reach a shelf
+  speed: 380, // px/s across; sets the flight time, within the limits below
+  minFlight: 0.5,
+  maxFlight: 1.0,
+};
+
+// The snitch (host, 2026-11-06): roll into the scrubber and it sets off a siren. All guesses.
+export const SIREN = { time: 3, cooldown: 8 };
+
 export const SCRUBBER = {
   w: 46,
   h: 26,
@@ -116,11 +131,11 @@ export const SCRUBBER = {
 
 export const RACK = { stock: 8, goldenChance: 0.1, spinTime: 1.1 }; // (guess)
 
-// Letter grades (host, 2026-11-06), on the board's cut points: half the target, the target, 1.5x, 2x.
+// Letter grades on the school scale (host, 2026-11-06): your score as a percentage of the night's target.
 export const GRADES = [
-  { at: 2, name: 'A' },
-  { at: 1.5, name: 'B' },
-  { at: 1, name: 'C' },
-  { at: 0.5, name: 'D' },
+  { at: 0.9, name: 'A' },
+  { at: 0.8, name: 'B' },
+  { at: 0.7, name: 'C' },
+  { at: 0.6, name: 'D' },
   { at: 0, name: 'F' },
 ] as const;
