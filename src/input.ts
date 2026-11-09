@@ -63,7 +63,7 @@ export class Controls {
       inp.swap ||= b(4) || b(5);
       inp.hoot ||= b(3);
       // Start / Select / A and the d-pad also work the menus.
-      for (const [i, code] of [[9, 'PadStart'], [8, 'PadSelect'], [0, 'PadA'], [12, 'PadUp'], [13, 'PadDown']] as const) {
+      for (const [i, code] of [[9, 'PadStart'], [8, 'PadSelect'], [0, 'PadA'], [12, 'PadUp'], [13, 'PadDown'], [14, 'PadLeft'], [15, 'PadRight']] as const) {
         if (b(i) && !this.padPrev[i]) this.menuQueue.push(code);
         this.padPrev[i] = b(i);
       }

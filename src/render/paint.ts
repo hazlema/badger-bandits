@@ -81,8 +81,8 @@ export function withAlpha(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-/** Speech bubble with a tail pointing at (tx, ty). */
-export function bubble(c: Ctx, s: string, tx: number, ty: number, accent: string, minX = 8, maxX = 952) {
+/** Speech bubble with a tail pointing at (tx, ty): dark and see-through, so the store shows behind it. */
+export function bubble(c: Ctx, s: string, tx: number, ty: number, minX = 8, maxX = 952) {
   c.font = `600 15px ${FONT}`;
   const w = Math.min(320, c.measureText(s).width + 22);
   const lines = wrap(c, s, w - 18);
@@ -90,20 +90,29 @@ export function bubble(c: Ctx, s: string, tx: number, ty: number, accent: string
   let x = tx - w / 2;
   x = Math.max(minX, Math.min(maxX - w, x));
   const y = Math.max(6, ty - h - 12);
-  c.save();
-  c.shadowColor = 'rgba(0,0,0,0.35)';
-  c.shadowBlur = 6;
-  fillRR(c, x, y, w, h, 10, C.cream, accent, 2.5);
-  c.restore();
-  c.beginPath();
-  const bx = Math.max(x + 12, Math.min(x + w - 12, tx));
-  c.moveTo(bx - 7, y + h - 1);
-  c.lineTo(bx + 7, y + h - 1);
-  c.lineTo(Math.max(x + 6, Math.min(x + w - 6, tx)), Math.min(ty, y + h + 10));
-  c.closePath();
-  c.fillStyle = C.cream;
+  // One outline for box and tail, so the see-through fill doesn't double up where they meet.
+  tailedBox(c, x, y, w, h, 10, tx, ty);
+  c.fillStyle = withAlpha('#111111', 0.82);
   c.fill();
-  lines.forEach((l, i) => text(c, l, x + w / 2, y + 15 + i * 18, 15, C.ink, 'center'));
+  c.lineWidth = 1.5;
+  c.strokeStyle = withAlpha('#555555', 0.82);
+  c.stroke();
+  lines.forEach((l, i) => text(c, l, x + w / 2, y + 15 + i * 18, 15, C.cream, 'center'));
+}
+
+function tailedBox(c: Ctx, x: number, y: number, w: number, h: number, r: number, tx: number, ty: number) {
+  const k = Math.min(r, w / 2, h / 2);
+  const bx = Math.max(x + k + 7, Math.min(x + w - k - 7, tx));
+  c.beginPath();
+  c.moveTo(x + k, y);
+  c.arcTo(x + w, y, x + w, y + h, k);
+  c.arcTo(x + w, y + h, x, y + h, k);
+  c.lineTo(bx + 7, y + h);
+  c.lineTo(Math.max(x + 6, Math.min(x + w - 6, tx)), Math.max(y + h + 4, Math.min(ty, y + h + 10)));
+  c.lineTo(bx - 7, y + h);
+  c.arcTo(x, y + h, x, y, k);
+  c.arcTo(x, y, x + w, y, k);
+  c.closePath();
 }
 
 function wrap(c: Ctx, s: string, max: number): string[] {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BOB, BUZZ, DT, NIGHT, RACCOON } from '../src/config';
-import { Game, gradeFor, multFor, NO_INPUT, type Input } from '../src/sim/game';
+import { BOB, BUZZ, DT, KNOCKDOWN, NIGHT, RACCOON, SPECIALS } from '../src/config';
+import { Game, gradeFor, multFor, NO_INPUT, percentFor, type Input } from '../src/sim/game';
+import { isSpecial } from '../src/sim/level';
 
 const run = (g: Game, input: Partial<Input>, seconds: number) => {
   const inp = { ...NO_INPUT, ...input };
@@ -17,14 +18,37 @@ describe('scoring rules', () => {
     expect([0, 1, 2, 3, 4, 5].map(multFor)).toEqual([1, 1.5, 2, 2.5, 3, 3.5]);
   });
 
-  it('grades on the school scale: your score as a percentage of the night target', () => {
-    const t = NIGHT.target;
-    expect(gradeFor(0.59 * t, t)).toBe('F');
-    expect(gradeFor(0.6 * t, t)).toBe('D');
-    expect(gradeFor(0.7 * t, t)).toBe('C');
-    expect(gradeFor(0.8 * t, t)).toBe('B');
-    expect(gradeFor(0.9 * t, t)).toBe('A');
-    expect(gradeFor(0.33 * t, t)).toBe('F'); // 33% is an F (host)
+  it('grades on the school scale: the percentage of specials turned in', () => {
+    expect(gradeFor(59)).toBe('F');
+    expect(gradeFor(60)).toBe('D');
+    expect(gradeFor(70)).toBe('C');
+    expect(gradeFor(80)).toBe('B');
+    expect(gradeFor(90)).toBe('A');
+    expect(gradeFor(33)).toBe('F'); // 33% is an F (host)
+  });
+
+  it('100% is every special in the store, counted from the level (host)', () => {
+    const g = new Game({ seed: 1, start: 'store' });
+    expect(g.specialsTotal).toBe(SPECIALS.rum + SPECIALS.curacao);
+    expect(g.bottles.filter((b) => isSpecial(b.kind)).length).toBe(g.specialsTotal);
+  });
+
+  it('only all of the specials is 100%', () => {
+    expect(percentFor(5, 10)).toBe(50);
+    expect(percentFor(10, 10)).toBe(100);
+    expect(percentFor(199, 200)).toBe(99);
+  });
+
+  it('the night score is the specials percentage plus bonus points times the Buzz at the end (host)', () => {
+    const g = new Game({ seed: 1, start: 'store' });
+    g.specialsTotal = 10;
+    g.specials = 8;
+    g.bonus = 12;
+    g.raccoon.buzz = 2;
+    g.end(true, 'climbed');
+    expect(g.result!.percent).toBe(80);
+    expect(g.result!.score).toBe(80 + 12 * 2);
+    expect(g.result!.grade).toBe('B'); // bonus points don't buy a letter
   });
 });
 
@@ -46,7 +70,6 @@ describe('roof and crawlspace tutorial', () => {
     expect(g.powerOut).toBe(true);
     for (let i = 0; i < 300 && g.phase === 'crawl'; i++) g.step({ ...NO_INPUT, right: true });
     expect(g.phase).toBe('store');
-    expect(g.mess).toBe(1); // the tile is the first smash
     settle(g);
     expect(g.raccoon.y).toBe(130); // on the hand-up board
   });
@@ -59,17 +82,15 @@ describe('the store', () => {
     return g;
   };
 
-  it('running into a bottle knocks it to the floor, scoring Mess and leaving a spill', () => {
+  it('running into a bottle knocks it to the floor, leaving a spill', () => {
     const g = store();
     const b = g.bottles.find((b) => b.state === 'shelf' && g.level.boards[b.board].y === 230 && b.x > 480 && b.x < 680)!;
     g.raccoon.x = b.x - 60;
     g.raccoon.y = 230;
     settle(g);
-    const before = g.mess;
     run(g, { right: true }, 0.6);
     run(g, {}, 1.5);
     expect(b.state).toBe('gone');
-    expect(g.mess).toBeGreaterThan(before);
     expect(g.spills.some((s) => s.y === g.level.floorY)).toBe(true);
   });
 
@@ -86,13 +107,32 @@ describe('the store', () => {
     expect(g.raccoon.buzz).toBe(0);
   });
 
-  it('handing up at the hole banks the load at the current Buzz', () => {
+  it('handing up counts specials toward 100% and every other bottle as one bonus point (host)', () => {
     const g = store();
-    g.raccoon.carry = ['regular', 'regular', 'mini'];
-    g.raccoon.buzz = 2;
+    g.raccoon.carry = ['rum', 'curacao', 'regular', 'mini', 'golden'];
     tap(g, 'grab');
-    expect(g.banked).toBe((3 + 3 + 1) * 2);
+    expect(g.specials).toBe(2);
+    expect(g.bonus).toBe(3);
     expect(g.raccoon.carry).toEqual([]);
+  });
+
+  it('a special that breaks or gets thrown is gone for good, so 100% is out of reach (host)', () => {
+    const g = store();
+    g.raccoon.carry = ['rum', 'curacao'];
+    g.raccoon.x = 1000;
+    g.raccoon.y = g.raccoon.peakY = 500;
+    g.scrub.x = 2500;
+    settle(g);
+    g.hit(1); // drops one, which smashes
+    run(g, {}, 1);
+    expect(g.specialsBroken).toBe(1);
+    run(g, {}, 2);
+    run(g, { throw: true }, 0.3);
+    run(g, {}, 3);
+    expect(g.specialsBroken).toBe(2);
+    g.specials = g.specialsTotal - g.specialsBroken;
+    g.end(true, 'climbed');
+    expect(g.result!.percent).toBeLessThan(100);
   });
 
   it('the night log adds up to the night score, and says what being caught cost you', () => {
@@ -104,7 +144,7 @@ describe('the store', () => {
     g.end(true, 'climbed');
     const sum = g.log.reduce((s, e) => s + (e.pts ?? 0), 0);
     expect(sum).toBeCloseTo(g.result!.score, 6);
-    expect(g.log.some((e) => e.text.startsWith('Handed up 2 bottles (1 special): 18 at ×2 Buzz') && e.pts === 36)).toBe(true);
+    expect(g.log.some((e) => e.text === 'Handed up 2 bottles (1 special)')).toBe(true);
 
     const caught = store();
     caught.raccoon.carry = ['rum'];
@@ -113,13 +153,6 @@ describe('the store', () => {
     caught.end(false, 'bob');
     expect(caught.log.reduce((s, e) => s + (e.pts ?? 0), 0)).toBeCloseTo(caught.result!.score, 6);
     expect(caught.log.some((e) => e.text.startsWith('Lost:'))).toBe(true);
-  });
-
-  it('special bottles are worth 5x a regular one when you hand them up', () => {
-    const g = store();
-    g.raccoon.carry = ['rum', 'curacao', 'regular'];
-    tap(g, 'grab');
-    expect(g.banked).toBe(15 + 15 + 3);
   });
 
   it('carry limit is 5, 8 with the tote', () => {
@@ -133,20 +166,22 @@ describe('the store', () => {
     expect(g.capacity).toBe(RACCOON.carry + RACCOON.toteExtra);
   });
 
-  it('climbing out keeps Mess and paws; getting caught keeps only the banked loot', () => {
+  it('climbing out turns in what is in your paws; getting caught loses it', () => {
     const a = store();
-    a.banked = 20;
-    a.raccoon.carry = ['regular'];
+    a.raccoon.carry = ['rum', 'regular'];
     tap(a, 'up');
     expect(a.result!.escaped).toBe(true);
-    expect(a.result!.score).toBe(20 + a.mess + 3);
+    expect(a.result!.specials).toBe(1);
+    expect(a.result!.bonus).toBe(1);
 
     const b = store();
-    b.banked = 20;
-    b.raccoon.carry = ['regular'];
+    b.specials = 2;
+    b.bonus = 4;
+    b.raccoon.carry = ['rum'];
     b.end(false, 'bob');
-    expect(b.result!.score).toBe(20);
-    expect(b.result!.kept!.items).toBe(1);
+    expect(b.result!.specials).toBe(2);
+    expect(b.result!.bonus).toBe(4);
+    expect(b.result!.kept).toBe(1);
   });
 
   it('a hit costs health, a Buzz step and one carried item, which smashes', () => {
@@ -156,14 +191,14 @@ describe('the store', () => {
     g.raccoon.x = 1000;
     g.raccoon.y = g.raccoon.peakY = 500;
     settle(g);
-    const mess = g.mess;
+    const spills = g.spills.length;
     g.hit(1);
     expect(g.raccoon.health).toBe(95);
     expect(g.raccoon.buzz).toBe(2);
     expect(g.raccoon.carry).toEqual(['regular']);
     g.scrub.x = 2500;
     run(g, {}, 1);
-    expect(g.mess).toBeGreaterThan(mess);
+    expect(g.spills.length).toBeGreaterThan(spills);
   });
 
   it('still inside at dawn is caught', () => {
@@ -217,6 +252,24 @@ describe("Bob's flashlight", () => {
     }
   });
 
+  it("a post right at his flashlight doesn't blank it: he holds the light past it", () => {
+    const g = withBob();
+    // Bob at the right end of unit 2 (790-1070), flashlight just short of its end post.
+    g.bob.x = 1052;
+    g.bob.dir = 1;
+    g.raccoon.x = 1130; // on the floor in the gap past the post
+    g.raccoon.y = 500;
+    g.bob.beam = Math.atan2(g.beamOrigin().y - (500 - g.raccoon.h / 2), 1130 - g.beamOrigin().x);
+    expect(g.seen()).toBe(true);
+    // A post further off still hides you.
+    g.raccoon.x = 1300;
+    g.raccoon.y = 410;
+    for (const beam of [-0.3, 0, 0.2, 0.4]) {
+      g.bob.beam = beam;
+      expect(g.seen()).toBe(false);
+    }
+  });
+
   it('close up, you get out of the beam by getting up above it', () => {
     const g = withBob();
     g.bob.x = 1300;
@@ -227,6 +280,52 @@ describe("Bob's flashlight", () => {
       g.bob.beam = b;
       expect(g.seen()).toBe(false);
     }
+  });
+
+  it('sees you on the floor right at his feet, under where the beam can tilt', () => {
+    const g = withBob();
+    g.bob.x = 1600;
+    g.bob.dir = 1;
+    g.raccoon.y = 500;
+    for (let dx = 0; dx <= BOB.poleReachX; dx += 10) {
+      g.raccoon.x = 1600 + dx;
+      g.bob.beam = BOB.sweepHigh; // looking up at the shelves
+      expect(g.seen(), `dx ${dx}`).toBe(true);
+    }
+  });
+
+  it("doesn't walk off while you lie dazed at his feet after a fall", () => {
+    const g = withBob();
+    // Up on unit 3's top board, above where his beam can tilt, with his lose timer nearly run out.
+    g.raccoon.x = 1425;
+    g.raccoon.y = 150;
+    run(g, {}, 0.3);
+    g.bob.x = 1500;
+    g.bob.dir = -1;
+    g.bob.state = 'chase';
+    g.bob.lostT = 1.6;
+    run(g, { right: true }, 0.33); // walk off the end of the board: a KO fall that lands beside him
+    run(g, {}, 3);
+    expect(g.phase).toBe('over');
+    expect(g.result!.reason).toBe('bob');
+  });
+
+  it("knocked down mid-chase, he can't pole you while he's down or the instant he gets up", () => {
+    const g = withBob();
+    g.raccoon.x = 1530;
+    g.raccoon.y = 500;
+    run(g, {}, 0.3);
+    g.bob.x = 1500;
+    g.bob.dir = 1;
+    g.bob.state = 'chase';
+    (g as unknown as { knockBob(): void }).knockBob();
+    run(g, {}, KNOCKDOWN.bob - 0.05);
+    expect(g.bob.state).toBe('down');
+    run(g, {}, 0.1); // he's back on his feet, but has to shout before he lunges
+    expect(g.phase).toBe('store');
+    expect(g.bob.state).toBe('shout');
+    run(g, {}, BOB.shoutTime + 0.1); // you stayed put: now he gets you
+    expect(g.result?.reason).toBe('bob');
   });
 
   it('play dead in the plush hides you if he did not see you dive', () => {

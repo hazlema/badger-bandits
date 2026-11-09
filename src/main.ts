@@ -16,12 +16,14 @@ const sound = new Sound(localStorageGet('plc.muted') === '1', localStorageGet('p
 // Start audio inside a real user gesture, which every browser accepts.
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) addEventListener(ev, () => sound.unlock(), { capture: true });
 const params = new URLSearchParams(location.search);
-const skipTutorial = params.has('store');
+// ?store and ?training skip the menu, for testing.
+const skipTo = params.has('training') ? 'training' : params.has('store') ? 'store' : null;
 
 // The front door (index.html) is the loading screen, then the start screen. It holds long enough to be seen and
 // ignores keys until everything is in.
 const front = document.getElementById('front')!;
-const frontPrompt = document.getElementById('front-prompt')!;
+const menu = [document.getElementById('front-start')!, document.getElementById('front-tutorial')!];
+let menuChoice = 0; // 0 Start Game, 1 Tutorial
 const frontImg = front.querySelector('img')!;
 const muteBtn = document.getElementById('front-mute')!;
 const musicBtn = document.getElementById('front-music')!;
@@ -29,7 +31,7 @@ let ready = false;
 // A font that fails to load still lets the game start, in the fallback face.
 const fonts = Promise.all([document.fonts.load('700 1em Fredoka'), document.fonts.load('600 1em Fredoka')]).catch(() => {});
 fonts.then(() => front.classList.add('fonts'));
-Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTimeout(r, skipTutorial ? 0 : 1500))]).then(() => {
+Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTimeout(r, skipTo ? 0 : 1500))]).then(() => {
   ready = true;
   front.classList.add('ready');
 });
@@ -37,7 +39,7 @@ Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTim
 let seed = Date.now() % 100000;
 let game = newGame();
 let view = new WorldView();
-let mode: 'title' | 'play' | 'paused' | 'card' = skipTutorial ? 'play' : 'title';
+let mode: 'title' | 'play' | 'paused' | 'card' = skipTo ? 'play' : 'title';
 front.classList.toggle('hidden', mode !== 'title');
 let pauseChoice = 0; // 0 Resume, 1 Quit to title
 let cardPage = 0; // 0 the report card, 1 the night log on its back
@@ -45,9 +47,9 @@ let scale = 1;
 let offX = 0;
 let offY = 0;
 
-function newGame() {
+function newGame(start: 'store' | 'training' | 'tutorial' = skipTo ?? 'store') {
   seed = (seed * 16807 + 7) % 2147483647;
-  return new Game({ seed, start: skipTutorial ? 'store' : 'roof' });
+  return new Game({ seed, start });
 }
 
 function restart(to: typeof mode = 'play') {
@@ -58,8 +60,18 @@ function restart(to: typeof mode = 'play') {
   expose();
 }
 
-function start() {
+function pick(choice: number) {
+  menuChoice = choice;
+  menu.forEach((b, i) => b.classList.toggle('picked', i === choice));
+}
+
+function start(choice = menuChoice) {
   if (mode !== 'title' || !ready) return;
+  if (choice === 1) {
+    game = newGame('tutorial');
+    view = new WorldView();
+    expose();
+  }
   mode = 'play';
   front.classList.add('hidden');
 }
@@ -78,12 +90,13 @@ function showSound() {
 }
 showSound();
 // Blur after a click, so a later Space plays rather than pressing the button again.
-for (const [btn, act] of [[frontPrompt, start], [muteBtn, toggleMute], [musicBtn, toggleMusic]] as const) {
+for (const [btn, act] of [[menu[0], () => start(0)], [menu[1], () => start(1)], [muteBtn, toggleMute], [musicBtn, toggleMusic]] as const) {
   btn.addEventListener('click', () => {
     act();
     btn.blur();
   });
 }
+menu.forEach((b, i) => b.addEventListener('pointerenter', () => pick(i)));
 
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -114,13 +127,14 @@ function frame(now: number) {
   time += dt;
   const input = controls.read();
 
-  // Title: Play. Pause: Resume / Quit to title (no restart). Card: Title (no retry).
+  // Title: Start Game / Tutorial. Pause: Resume / Quit to title (no restart). Card: Title (no retry).
   for (const m of controls.menu()) {
     sound.unlock();
     const confirm = m === 'Space' || m === 'Enter' || m === 'PadA';
     if (m === 'KeyM') toggleMute();
     else if (m === 'KeyN') toggleMusic();
     else if (mode === 'title' && ready && (confirm || m === 'PadStart')) start();
+    else if (mode === 'title' && ready && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'PadUp', 'PadDown', 'PadLeft', 'PadRight'].includes(m)) pick(1 - menuChoice);
     else if (mode === 'card' && (m === 'KeyL' || m === 'PadSelect')) cardPage = 1 - cardPage;
     else if (mode === 'card' && (confirm || m === 'PadStart')) restart('title');
     else if (mode === 'play' && (m === 'Escape' || m === 'KeyP' || m === 'PadStart')) {
@@ -143,6 +157,10 @@ function frame(now: number) {
       for (const e of game.events) sound.play(e, game);
       acc -= DT;
       if (game.phase === 'over') {
+        if (!game.result) {
+          restart('title'); // finished the tutorial
+          break;
+        }
         mode = 'card';
         cardPage = 0;
         logNight();
@@ -162,14 +180,12 @@ function frame(now: number) {
   ctx.clip();
   // On the title the front door covers this, and fades to reveal the night's first frame.
   view.draw(ctx, game, time, keys());
-  drawHud(ctx, game, time);
+  drawHud(ctx, game, time, keys());
   if (mode === 'paused') drawPause(ctx, pauseChoice, controls.usingPad);
   if (mode === 'card') drawCard(ctx, game, time, controls.usingPad, cardPage);
   if (mode === 'title') {
     const input = controls.usingPad ? 'pad' : 'keys';
     if (front.dataset.input !== input) front.dataset.input = input;
-    const say = `Press ${controls.usingPad ? 'A' : 'Space'} to begin`;
-    if (ready && frontPrompt.textContent !== say) frontPrompt.textContent = say;
   }
   ctx.restore();
   requestAnimationFrame(frame);
@@ -179,7 +195,7 @@ requestAnimationFrame(frame);
 /** The night log in the console too, so a tester can copy it. */
 function logNight() {
   const r = game.result!;
-  console.log(`Badger Bandits night: ${r.escaped ? 'climbed out' : `caught (${r.reason})`}, score ${r.score.toFixed(1)} of ${r.target} = ${Math.round((r.score / r.target) * 100)}% ${r.grade}`);
+  console.log(`Badger Bandits night: ${r.escaped ? 'climbed out' : `caught (${r.reason})`}, specials ${r.specials}/${r.specialsTotal} = ${r.percent}% ${r.grade}, bonus ${r.bonus} x${r.mult}, score ${r.score.toFixed(1)}`);
   console.table(game.log.map((e) => ({ time: `${Math.floor(e.t / 60)}:${Math.floor(e.t % 60).toString().padStart(2, '0')}`, what: e.text, points: e.pts === undefined ? '' : +e.pts.toFixed(1) })));
 }
 

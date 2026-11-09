@@ -46,9 +46,8 @@ export const BUZZ = {
   hiccupLobEvery: 3, // every 3rd hiccup pops your top bottle out in a lob (guess; the board says every hiccup)
 };
 
-// Special bottles are worth 5x a regular one (host, 2026-11-06), so smashing one is also 5x the Mess.
-export const LOOT = { mini: 1, regular: 3, golden: 5, rum: 15, curacao: 15 } as const; // (design)
-export const SPECIALS = { rum: 4, curacao: 4 }; // how many replace regular bottles in the night-1 store (guess)
+// Turning in every special is 100% of the night (host, 2026-11-08). Every other bottle is one bonus point.
+export const SPECIALS = { rum: 10, curacao: 10 }; // how many replace regular bottles in the night-1 store (guess)
 export const SEA_LEGS = 30; // s of no sway or wobble after lapping the rum captain's spill (guess)
 export const PRINTS = { time: 12, every: 26, life: 40 }; // blue paws: s after stepping in, px apart, s each lasts (guess)
 
@@ -65,11 +64,11 @@ export const THROW = {
 
 // Undecided on the board; the host took the builder's proposal: no health bars,
 // a bottle knocks an enemy off its feet for a while. (guess)
-export const KNOCKDOWN = { scrubber: 4, bob: 1.5 };
+// s knocked off their feet; Bob's raised from 1.5 so a bonk buys a real getaway (host, 2026-11-07)
+export const KNOCKDOWN = { scrubber: 4, bob: 4.5 };
 
 export const FLOW = { speed: 45, min: 140, max: 360 }; // big floor spills run toward the front (guess)
-export const MESS_FACTOR = 0.5; // Mess = half loot value (design)
-export const TILE_MESS = 1; // (design)
+export const TUTORIAL = { restock: 3 }; // s until the practice store puts a missing bottle back (guess)
 export const NAG_EVERY = 4; // smashed bottles in a row, without a hand-up, before the cousin hisses at you (host, 2026-11-06; count is a guess)
 
 export const RING = { small: 170, big: 320, biggest: 520, hoot: 700, siren: 1000 }; // noise radii px (guess)
@@ -77,7 +76,6 @@ export const RING = { small: 170, big: 320, biggest: 520, hoot: 700, siren: 1000
 export const NIGHT = {
   length: 300, // s from the tile crash to dawn (design: ~5 min on night 1)
   bobAt: 1 / 3, // (design)
-  target: 300, // the night score that counts as 100% (host's playtests scored 245 and 300; was par 80) (guess)
   dawnLightFrom: 0.55, // fraction of the night when the sunlight starts creeping (guess)
 };
 
@@ -106,6 +104,10 @@ export const BOB = {
   shoutTime: 0.6, // he freezes and shouts before chasing
 };
 
+// A shelf end post this close to a light (Bob's flashlight, the snitch-cam) doesn't cut it off: the light is
+// held past it. Without this, standing beside a post blanked his whole beam (guess).
+export const POST_GRACE = 24;
+
 // Bob throws (host, 2026-11-06): mid-chase, when you're up out of pole reach, he grabs a bottle off a shelf
 // near him and lobs it at you. All guesses.
 export const BOB_THROW = {
@@ -127,15 +129,28 @@ export const SCRUBBER = {
   patrolSpeed: 42,
   rushSpeed: 95,
   slurpTime: 1.2,
+  // The snitch-cam (host, 2026-11-07): a camera eye on a telescoping pole, so the shelves aren't safe from it.
+  // Eye heights are px above the floor. All guesses.
+  eyeBase: 22, // tucked in its dome
+  eyeTop: 360, // fully raised: level with the top boards
+  eyeUp: 80, // px/s raising: slow, so you see it coming
+  eyeDown: 220, // px/s tucking back down
+  peekEvery: [7, 11], // s of patrol between periscope stops
+  peekHold: 3, // s it scans at the top, turning around halfway
+  camRange: 260,
+  camHalf: 0.38, // rad, half width of the cone (Bob's is 0.2)
+  camTilt: 0.15, // rad above level it looks while patrolling (the floor ahead); level while peeking
+  camSweep: 0.35, // ± rad it pans
+  camPeriod: 2.4, // s per pan
 };
 
 export const RACK = { stock: 8, goldenChance: 0.1, spinTime: 1.1 }; // (guess)
 
-// Letter grades on the school scale (host, 2026-11-06): your score as a percentage of the night's target.
+// Letter grades on the school scale (host, 2026-11-06): the percentage of the night's specials you turned in.
 export const GRADES = [
-  { at: 0.9, name: 'A' },
-  { at: 0.8, name: 'B' },
-  { at: 0.7, name: 'C' },
-  { at: 0.6, name: 'D' },
+  { at: 90, name: 'A' },
+  { at: 80, name: 'B' },
+  { at: 70, name: 'C' },
+  { at: 60, name: 'D' },
   { at: 0, name: 'F' },
 ] as const;

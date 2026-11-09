@@ -2,8 +2,10 @@
 
 import { BUZZ, GRADES, NIGHT, PRINTS, SEA_LEGS, VIEW_H, VIEW_W } from '../config';
 import { multFor, type Game } from '../sim/game';
+import { isSpecial } from '../sim/level';
 import { C, ellipse, FONT, fillRR, GRADE_COLOUR, popup, POPUP, rr, text, withAlpha, woodBoards, type Ctx } from './paint';
-import { drawBottle } from './world';
+import { drawBottle, withKeys, type Prompts } from './world';
+import { LESSONS, TUTORIAL_DONE } from '../sim/training';
 
 /** Price-tag paper, and inks dark enough to read on it. */
 const TAG = { paper: '#f1e4c6', ink: '#2a170c', red: '#b02a1e', rope: '#c9b48a' };
@@ -88,11 +90,11 @@ function paw(c: Ctx, x: number, y: number, s: number, col: string) {
   for (const [dx, dy] of [[-5, -4], [-1.8, -6.5], [1.8, -6.5], [5, -4]]) ellipse(c, x + dx * s, y + dy * s, 1.8 * s, 2.2 * s, col);
 }
 
-export function drawHud(c: Ctx, g: Game, time: number) {
+export function drawHud(c: Ctx, g: Game, time: number, k: Prompts) {
   const R = g.raccoon;
   band(c);
   if (g.level.id !== 'store') {
-    inked(c, g.level.id === 'roof' ? 'Night 1 · The roof' : 'Night 1 · The crawlspace', VIEW_W / 2, BAND + 34, 20, C.cream, 'center', 600);
+    inked(c, g.level.id === 'roof' ? 'Tutorial · The roof' : 'Tutorial · The crawlspace', VIEW_W / 2, BAND + 34, 20, C.cream, 'center', 600);
     return;
   }
 
@@ -178,6 +180,12 @@ export function drawHud(c: Ctx, g: Game, time: number) {
   });
   if (R.cheeks) tag(c, bx + bw - 26, 86, 50, 22, 0.06, () => text(c, 'hic…', 0, 0.5, 14, TAG.ink, 'center', 700));
 
+  if (g.tutorial) {
+    lessonSign(c, g, k);
+    practiceSum(c, g);
+    return;
+  }
+
   // Time to dawn, a smaller sign top right.
   const left = Math.max(0, NIGHT.length - g.t);
   const mm = Math.floor(left / 60);
@@ -230,18 +238,48 @@ function band(c: Ctx) {
   c.fillRect(0, BAND + 1.5, VIEW_W, 1.5);
 }
 
+/** The tutorial's sign, top right: the first lesson still open, in the player's own keys. */
+function lessonSign(c: Ctx, g: Game, k: Prompts) {
+  const w = 296;
+  const x = VIEW_W - w - 12;
+  const lesson = g.lesson;
+  c.font = `500 13px ${FONT}`;
+  const lines: string[] = [];
+  let line = '';
+  for (const word of withKeys(lesson?.text ?? TUTORIAL_DONE, k).split(' ')) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && c.measureText(next).width > w - 36) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  lines.push(line);
+  sign(c, x, 9, w, 42 + lines.length * 17, [40, w - 40]);
+  inked(c, lesson?.title ?? 'Tutorial done!', x + 18, 30, 15, C.gold);
+  text(c, `${g.lessons.size} / ${LESSONS.length}`, x + w - 18, 30, 12, '#e6d4b0', 'right', 600);
+  lines.forEach((s, i) => inked(c, s, x + 18, 50 + i * 17, 13, C.cream, 'left', 500));
+}
+
+/** The tutorial's bar: what you've turned in, and the bonus sum moving as you drink and hand up. */
+function practiceSum(c: Ctx, g: Game) {
+  const x = 296;
+  const w = VIEW_W - x - 22;
+  inked(c, `Specials turned in: ${g.specials}`, x, BAND + 22, 15, C.gold);
+  inked(c, `Bonus ${g.bonus} × x${g.mult} = ${fmt(g.bonus * g.mult)}`, x + w, BAND + 22, 20, C.cream, 'right');
+  text(c, 'Your Buzz when you leave multiplies every bonus point', x + w, BAND + 46, 12, '#e6d4b0', 'right', 500);
+}
+
 function parBar(c: Ctx, g: Game) {
-  const target = NIGHT.target;
   const x = 296;
   const w = VIEW_W - x - 22;
   const by = BAND + 28;
-  const max = target; // the bar runs 0 to 100%
-  text(c, 'Tonight', x, BAND + 19, 11, '#e6d4b0', 'left', 600);
-  inked(c, `Banked ${fmt(g.banked)}`, x + w - 92, BAND + 19, 12, C.gold, 'right');
-  inked(c, `At risk ${fmt(g.atRisk)}`, x + w, BAND + 19, 12, '#f0b27e', 'right');
+  const total = g.specialsTotal || 1; // none counted until you drop into the store
+  inked(c, `Specials ${g.specials} / ${g.specialsTotal}`, x, BAND + 19, 12, C.gold);
+  if (g.specialsBroken) inked(c, `Broken ${g.specialsBroken}`, x + w - 100, BAND + 19, 12, '#f0b27e', 'right');
+  inked(c, `Bonus ${g.bonus} x${g.mult}`, x + w, BAND + 19, 12, C.cream, 'right');
   well(c, x, by, w, 11, 5.5);
-  const bw = Math.min(w, (g.banked / max) * w);
-  const rw = Math.min(w - bw, (g.atRisk / max) * w);
+  const bw = Math.min(w, (g.specials / total) * w);
+  const rw = Math.min(w - bw, (g.raccoon.carry.filter(isSpecial).length / total) * w); // the specials in your paws
   c.save();
   rr(c, x, by, w, 11, 5.5);
   c.clip();
@@ -264,7 +302,7 @@ function parBar(c: Ctx, g: Game) {
   // Grade marks: a brass peg where each letter starts, the letter on a tag under it.
   for (const gr of GRADES) {
     if (gr.at === 0) continue;
-    const mx = x + ((gr.at * target) / max) * w;
+    const mx = x + (gr.at / 100) * w;
     const peg = c.createLinearGradient(mx - 2.5, 0, mx + 2.5, 0);
     peg.addColorStop(0, '#8a6a2a');
     peg.addColorStop(0.5, '#f0d28a');
@@ -313,7 +351,7 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
   c.fillRect(0, 0, VIEW_W, VIEW_H);
   if (page === 1) return drawLog(c, g, time, pad);
   const w = 520;
-  const h = r.kept ? 450 : 420; // room for the "kept by animal control" row
+  const h = r.escaped ? 420 : 450; // room for the "kept by animal control" row
   const x = (VIEW_W - w) / 2;
   const y = (VIEW_H - h) / 2;
   const den = r.escaped;
@@ -331,12 +369,12 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
   }
 
   const rows: [string, string][] = [
-    ['Loot banked with your cousin', fmt(r.banked)],
-    ['Mess', den ? fmt(r.mess) : '—'],
-    ['In your paws', den ? fmt(r.paws) : '—'],
-    ['Coins in your fur', den ? fmt(r.coins) : '—'],
+    ['Specials turned in', `${r.specials} of ${r.specialsTotal}`],
+    ['Specials broken', `${r.specialsBroken}`],
+    ['Bonus bottles', `${r.bonus}`],
+    ['Buzz at the end', `x${r.mult}`],
   ];
-  if (r.kept) rows.push(['Kept by animal control', `${fmt(r.kept.mess)} Mess, ${r.kept.items} item${r.kept.items === 1 ? '' : 's'}`]);
+  if (!den) rows.push(['Kept by animal control', `${r.kept} bottle${r.kept === 1 ? '' : 's'}`]);
   const top = y + (den ? 106 : 124);
   rows.forEach(([a, b], i) => {
     const ry = top + i * 28;
@@ -347,16 +385,15 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
   });
   const sy = top + rows.length * 28 + 12;
   text(c, 'Night score', x + 40, sy, 20, ink, 'left', 700);
-  text(c, fmt(r.score), x + w - 40, sy, 20, ink, 'right', 700);
-  // The grade bar, with each letter at the score it starts from.
+  text(c, `${r.percent} + ${r.bonus} x${r.mult} = ${fmt(r.score)}`, x + w - 40, sy, 20, ink, 'right', 700);
+  // The grade bar, with each letter at the percentage of specials it starts from.
   const bx = x + 40;
   const bw = w - 80;
-  const max = r.target;
   fillRR(c, bx, sy + 20, bw, 12, 6, POPUP.well);
-  fillRR(c, bx, sy + 20, Math.min(bw, (r.score / max) * bw), 12, 6, C.gold);
+  fillRR(c, bx, sy + 20, (r.percent / 100) * bw, 12, 6, C.gold);
   for (const gr of GRADES) {
     if (!gr.at) continue;
-    const mx = bx + ((gr.at * r.target) / max) * bw;
+    const mx = bx + (gr.at / 100) * bw;
     c.fillStyle = ink;
     c.fillRect(mx - 1, sy + 17, 2, 18);
     // a dark edge so green and yellow hold up on the wood
@@ -370,7 +407,7 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
     text(c, gr.name, mx, sy + 48, 14, GRADE_COLOUR[gr.name], 'center', 700);
   }
   // The letter in a badge, with the percentage it comes from beside it.
-  const share = `${Math.round((r.score / r.target) * 100)}%`;
+  const share = `${r.percent}%`;
   c.font = `600 20px ${FONT}`;
   const tw = c.measureText(share).width;
   const gx = VIEW_W / 2 - (64 + 18 + tw) / 2;
@@ -410,7 +447,7 @@ function drawLog(c: Ctx, g: Game, time: number, pad: boolean) {
   const { ink, dim } = POPUP;
   popup(c, x, y, w, h, 0.008);
   text(c, 'Night log', x + 36, y + 36, 26, ink, 'left', 700);
-  text(c, `${fmt(r.score)} of ${r.target} · ${Math.round((r.score / r.target) * 100)}% · ${r.grade}`, x + w - 36, y + 38, 17, GRADE_COLOUR[r.grade], 'right', 700);
+  text(c, `${fmt(r.score)} · ${r.percent}% · ${r.grade}`, x + w - 36, y + 38, 17, GRADE_COLOUR[r.grade], 'right', 700);
   const rows = 15;
   const lines = g.log.length > rows ? g.log.slice(g.log.length - (rows - 1)) : g.log;
   let ly = y + 78;

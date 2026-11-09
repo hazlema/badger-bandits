@@ -7,6 +7,8 @@ import { rng } from './rng';
 
 export type ItemKind = 'mini' | 'regular' | 'golden' | 'rum' | 'curacao';
 
+export const isSpecial = (kind: ItemKind): boolean => kind in SPECIALS;
+
 export interface Rect { x: number; y: number; w: number; h: number }
 /** One-way platform: stand on it, jump or climb up through it. */
 export interface Board { x1: number; x2: number; y: number; unit: number }
@@ -14,6 +16,8 @@ export interface Board { x1: number; x2: number; y: number; unit: number }
 export interface Unit { x: number; w: number; top: number }
 export interface BottleDef { x: number; y: number; kind: ItemKind; board: number }
 export interface Sign { x: number; y: number; text: string }
+/** A chalkboard on the store wall in the tutorial. x is its centre, y its top. */
+export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
 export interface Level {
   id: 'roof' | 'crawl' | 'store';
@@ -26,6 +30,7 @@ export interface Level {
   units: Unit[];
   bottles: BottleDef[];
   signs: Sign[];
+  posters?: Poster[];
   start: { x: number; y: number };
   // Named spots. Only the ones a level uses are set.
   vent?: Rect;

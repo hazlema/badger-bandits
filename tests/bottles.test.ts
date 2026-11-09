@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOB_THROW, BUZZ, DT, FALL, FLOW, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, RING, SIREN } from '../src/config';
+import { BOB, BOB_THROW, BUZZ, DT, FALL, FLOW, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, RING, SCRUBBER, SIREN } from '../src/config';
 import { Game, NO_INPUT, type Input, type SimEvent } from '../src/sim/game';
 
 const run = (g: Game, input: Partial<Input>, seconds: number, seen: SimEvent[] = []) => {
@@ -62,6 +62,25 @@ describe('targeting and grabbing', () => {
       }
     }
     throw new Error('never bumped a bottle');
+  });
+
+  it('holding Grab on the run scoops up every bottle you hit, without slowing down', () => {
+    const g = store();
+    stand(g, 410, 320);
+    const seen = run(g, { right: true, grab: true }, 0.4); // short of filling the 5 slots on this packed shelf
+    expect(g.raccoon.carry.length).toBeGreaterThan(1);
+    expect(seen.some((e) => e.type === 'knock')).toBe(false);
+    expect(g.bottles.some((b) => b.state === 'air')).toBe(false);
+    expect(g.raccoon.vx).toBeGreaterThan(200);
+  });
+
+  it('with a full bag, holding Grab on the run smashes bottles like normal', () => {
+    const g = store();
+    stand(g, 410, 320);
+    g.raccoon.carry = Array.from({ length: g.raccoon.cap }, () => 'regular' as const);
+    const seen = run(g, { right: true, grab: true }, 0.8);
+    expect(g.raccoon.carry.length).toBe(g.raccoon.cap);
+    expect(seen.some((e) => e.type === 'knock')).toBe(true);
   });
 
   it('Switch picks which carried item is ready, and Throw uses it when nothing is highlighted', () => {
@@ -135,6 +154,53 @@ describe('the three throws', () => {
     expect(g.spills.some((s) => s.y === 320)).toBe(true);
   });
 
+  describe('hold Throw, then pick: ↓ drops, ←/→ rolls that way, nothing lobs', () => {
+    /** Press Throw, hold it a few frames, then press `then` while still holding it. */
+    const throwThen = (g: Game, then: Partial<Input>) => {
+      run(g, { throw: true }, 0.1);
+      const e = run(g, { throw: true, ...then }, DT);
+      e.push(...run(g, { ...then }, 0.05));
+      return [...e, ...run(g, {}, 0.05)];
+    };
+
+    it('Throw then ↓ on a shelf board drops the bottle and you stay on the board', () => {
+      const g = store();
+      stand(g, 820, 410);
+      const lit = g.highlighted()!;
+      throwThen(g, { down: true });
+      expect(lit.state).toBe('air');
+      expect(lit.vx).toBe(0);
+      expect(g.raccoon.y).toBe(410); // no hop down through the board
+      expect(g.raccoon.aimT).toBe(null);
+    });
+
+    it('Throw then → rolls right, Throw then ← rolls left, even facing the other way', () => {
+      for (const [key, dir] of [['right', 1], ['left', -1]] as const) {
+        const g = store();
+        stand(g, 1000, 500, dir === 1 ? -1 : 1);
+        g.raccoon.carry = ['regular'];
+        throwThen(g, { [key]: true });
+        const b = g.bottles.find((b) => b.state === 'rolling');
+        expect(b, key).toBeTruthy();
+        expect(Math.sign(b!.vx), key).toBe(dir);
+        expect(g.raccoon.facing, key).toBe(dir);
+      }
+    });
+
+    it('running and then pressing Throw aims a lob: an arrow already held picks nothing', () => {
+      const g = store();
+      stand(g, 1000, 500);
+      g.raccoon.carry = ['regular'];
+      run(g, { right: true }, 0.2);
+      run(g, { right: true, throw: true }, 0.3);
+      expect(g.raccoon.aimT).not.toBe(null);
+      expect(g.bottles.some((b) => b.state === 'rolling')).toBe(false);
+      const events = run(g, { right: true }, 3);
+      expect(events.some((e) => e.type === 'throw')).toBe(true);
+      expect(g.bottles.some((b) => b.state === 'rolling')).toBe(false);
+    });
+  });
+
   it('a throw that hits nothing makes a noise ring that pulls Bob to the spot', () => {
     const g = store();
     letBobIn(g);
@@ -162,6 +228,8 @@ describe('the three throws', () => {
     run(g, {}, 0.5);
     expect(g.bob.state).toBe('down');
     run(g, {}, KNOCKDOWN.bob);
+    expect(g.bob.state).toBe('shout'); // on his feet, a beat before he comes at you
+    run(g, {}, BOB.shoutTime);
     expect(g.bob.state).toBe('chase');
   });
 
@@ -241,6 +309,7 @@ describe('spills, hoots and special bottles', () => {
     g.scrub.x = 1500;
     g.scrub.dir = 1;
     g.scrub.state = 'patrol';
+    g.scrub.alarmCd = 99; // its camera isn't what this is about
     run(g, { right: true }, 1);
     expect(g.raccoon.blueT).toBeGreaterThan(0);
     expect(g.prints.length).toBeGreaterThan(3);
@@ -346,7 +415,7 @@ describe('the cousin minds the merchandise', () => {
     expect(nags(smashOne())).toBe(0);
     g.raccoon.carry = ['regular'];
     press(g, { grab: true });
-    expect(g.banked).toBeGreaterThan(0);
+    expect(g.bonus).toBeGreaterThan(0);
     g.raccoon.carry = Array(NAG_EVERY - 1).fill('regular');
     for (let i = 1; i < NAG_EVERY; i++) expect(nags(smashOne())).toBe(0);
   });
@@ -377,15 +446,13 @@ describe('Bob throws back', () => {
     expect(g.raccoon.health).toBe(100 - HIT.damage);
   });
 
-  it('moving after the wind-up dodges it, and the miss smashes as your Mess', () => {
+  it('moving after the wind-up dodges it, and the miss smashes', () => {
     const g = upHigh();
     run(g, {}, BOB_THROW.windup + 0.05); // he's let go
-    const mess = g.mess;
     g.raccoon.x = 1420; // stepped along the board
     const after = run(g, {}, BOB_THROW.maxFlight + 0.5);
     expect(after.some((e) => e.type === 'hit')).toBe(false);
     expect(after.some((e) => e.type === 'smash')).toBe(true);
-    expect(g.mess).toBeGreaterThan(mess);
   });
 
   it("he doesn't throw when he can reach you with the pole", () => {
@@ -446,5 +513,98 @@ describe('the scrubber snitches', () => {
     stand(g, g.scrub.x - 40, 500);
     seen.push(...run(g, { right: true }, 0.5));
     expect(seen.filter((e) => e.type === 'siren').length).toBe(1);
+  });
+});
+
+describe('the snitch-cam', () => {
+  /** The scrubber parked on patrol at x, facing dir, with its next periscope stop `peekIn` s away. */
+  const park = (g: Game, x: number, dir: 1 | -1, peekIn = 99) => {
+    g.scrub.x = x;
+    g.scrub.dir = dir;
+    g.scrub.state = 'patrol';
+    g.scrub.peekCd = peekIn;
+  };
+  /** Keep it parked: patrol would wander off, so put it back each step. */
+  const hold = (g: Game, seconds: number) => {
+    const x = g.scrub.x;
+    const seen: SimEvent[] = [];
+    for (let i = 0; i < Math.round(seconds / DT); i++) {
+      g.step(NO_INPUT);
+      seen.push(...g.events);
+      g.scrub.x = x;
+    }
+    return seen;
+  };
+
+  it('on patrol its camera spots you on the floor ahead and the siren goes off', () => {
+    const g = store();
+    stand(g, 1400, 500);
+    park(g, 1220, 1);
+    const seen = hold(g, 1.5);
+    expect(seen.some((e) => e.type === 'siren')).toBe(true);
+    expect(g.scrub.state).toBe('alarm');
+  });
+
+  it("it can't see up to the top board from the floor, until it raises its eye on the pole", () => {
+    const g = store();
+    stand(g, 1330, 150); // top board of the 1180-1440 unit
+    park(g, 1250, 1);
+    expect(hold(g, 2).some((e) => e.type === 'siren')).toBe(false);
+    g.scrub.peekCd = 0;
+    const seen = hold(g, SCRUBBER.eyeTop / SCRUBBER.eyeUp + SCRUBBER.peekHold);
+    expect(seen.some((e) => e.type === 'siren')).toBe(true);
+  });
+
+  it('as the eye climbs it scans each board: it spots you on a middle board as it passes your level', () => {
+    const g = store();
+    stand(g, 1360, 320);
+    park(g, 1220, 1, 0);
+    let at = -1;
+    const x = g.scrub.x;
+    for (let i = 0; i < 400 && at < 0; i++) {
+      g.step(NO_INPUT);
+      g.scrub.x = x;
+      if (g.events.some((e) => e.type === 'siren')) at = g.scrub.eye;
+    }
+    // Seen with the eye between the board under you (180 up) and the one above (270 up), not through either.
+    expect(at).toBeGreaterThan(180);
+    expect(at).toBeLessThan(270);
+  });
+
+  it("a shelf unit's end panel hides you from the raised eye", () => {
+    const g = store();
+    stand(g, 900, 320); // middle board of the 790-1070 unit
+    park(g, 1120, -1, 0); // in the aisle next door, about to peek
+    const seen = hold(g, SCRUBBER.eyeTop / SCRUBBER.eyeUp + SCRUBBER.peekHold + 1);
+    expect(seen.some((e) => e.type === 'siren')).toBe(false);
+  });
+
+  it('drop a bottle on the raised camera and it knocks the scrubber down', () => {
+    const g = store();
+    stand(g, 1300, 230);
+    const lit = g.highlighted()!;
+    park(g, lit.x, 1);
+    g.scrub.state = 'peek';
+    g.scrub.eye = 200; // camera head a board and a bit below you, looking sideways
+    g.scrub.t = 99;
+    press(g, { throw: true, down: true });
+    const x = g.scrub.x;
+    for (let i = 0; i < 60 && (g.scrub.state as string) !== 'down'; i++) {
+      g.step(NO_INPUT);
+      g.scrub.x = x;
+      if ((g.scrub.state as string) === 'peek') g.scrub.eye = 200;
+    }
+    expect(g.scrub.state).toBe('down');
+  });
+
+  it('the eye tucks back down when it gives up a peek, and when it is knocked over', () => {
+    const g = store();
+    stand(g, 400, 500);
+    park(g, 2000, 1, 0);
+    hold(g, 1);
+    expect(g.scrub.eye).toBeGreaterThan(SCRUBBER.eyeBase + 40);
+    (g as unknown as { knockScrubber(): void }).knockScrubber();
+    hold(g, 0.1);
+    expect(g.scrub.eye).toBe(SCRUBBER.eyeBase);
   });
 });

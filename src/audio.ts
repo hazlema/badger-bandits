@@ -6,7 +6,7 @@
 //   scrubber's hum, the aiming whistle, rolling bottles, running spills, dawn birds;
 // - a sneaky music loop that gets busier when Bob comes in and when he chases you,
 //   and goes wobbly with your Buzz.
-import { NIGHT, THROW } from './config';
+import { NIGHT, SCRUBBER, THROW } from './config';
 import type { Game, SimEvent } from './sim/game';
 
 type Mood = 'calm' | 'sneak' | 'tense' | 'chase';
@@ -226,6 +226,9 @@ export class Sound {
       case 'golden':
         [880, 1109, 1319, 1760].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.14, 1, i * 0.07));
         break;
+      case 'lesson':
+        [660, 990].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.14, 1, i * 0.09));
+        break;
       case 'tote':
         this.noise(0.2, 0.15, 600);
         this.tone(660, 0.15, 'triangle', 0.12, 1.2);
@@ -429,9 +432,11 @@ export class Sound {
       // The scrubber's motor hum, higher when it rushes.
       const S = g.scrub;
       if (this.scrub) {
-        const v = S.state === 'down' ? 0 : near(S.x) * (S.state === 'rush' ? 0.05 : 0.028);
+        const v = S.state === 'down' ? 0 : near(S.x) * (S.state === 'rush' || (S.state === 'peek' && S.eye < SCRUBBER.eyeTop) ? 0.05 : 0.028);
         set(this.scrub.g.gain, v);
-        set(this.scrub.o.frequency, S.state === 'rush' ? 82 : S.state === 'slurp' ? 66 : 52);
+        // A servo whine while its camera pole cranks up.
+        const cranking = S.state === 'peek' && S.eye < SCRUBBER.eyeTop;
+        set(this.scrub.o.frequency, cranking ? 150 : S.state === 'rush' ? 82 : S.state === 'slurp' ? 66 : 52);
         set(this.scrub.p.pan, pan(S.x));
       }
       // Rolling bottles rumble along; running spills trickle.

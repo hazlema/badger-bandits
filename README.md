@@ -14,7 +14,8 @@ npm install
 npm run dev       # then open http://localhost:5173
 ```
 
-Add `?store` to the URL (http://localhost:5173/?store) to skip the roof and crawlspace and start in the store.
+Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, or `?training` to skip
+to the tutorial's practice store.
 `npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
 
 ## How to play
@@ -25,11 +26,17 @@ Get in, grab bottles, and **hand them up to your cousin at the ceiling hole**. H
 is safe. Then **climb out through the hole** before the night ends. The clock in the top right counts down to
 dawn (about 5 minutes). Get caught, or still be inside at dawn, and you lose everything you hadn't handed up.
 
-### Getting in (the tutorial)
+### Start Game or Tutorial
+
+The menu offers both. **Start Game** drops you straight into the store. **Tutorial** runs:
 
 1. **Roof:** run, jump the AC unit, climb the ivy trellis (hold ↑), and press **E** at the vent to pry it up.
 2. **Crawlspace:** press **E** at the wires to chew through them. That kills the store's power.
-3. Walk on and you drop through a ceiling tile into the store, onto the back shelf right under the hole.
+3. **Practice store:** walk on and you drop through a ceiling tile into a practice copy of the store, with no Bob,
+   no scrubber, no clock, and shelves that restock. A sign up top walks through 13 lessons in `src/sim/training.ts`:
+   turning in specials and plain bottles, smashing and drinking, Buzz multiplying your bonus (a live sum runs along
+   the bottom), the rum and curaçao buffs, playing dead, lob, drop, roll, switching, hooting and the tote bag.
+   Chalkboards on the wall explain the why. Finish them all and press ↑ at the hole to return to the menu.
 
 ### Controls
 
@@ -39,6 +46,7 @@ dawn (about 5 minutes). Get caught, or still be inside at dawn, and you lose eve
 | Jump (up to the next shelf board) | Space or Z | A |
 | Hop down through the board you're on | ↓ or S | Down |
 | Grab: take the highlighted bottle, drink a spill, hand up at the hole, use things | E or X | X |
+| Scoop: hold Grab on the run and bottles you hit go in the bag (a full bag smashes them as usual) | hold E or X | hold X |
 | Throw (see below) | F or C | B |
 | Switch which carried bottle you'll throw | Q or V | LB / RB |
 | Hoot across a carried bottle | R or B | Y |
@@ -46,31 +54,36 @@ dawn (about 5 minutes). Get caught, or still be inside at dawn, and you lose eve
 | Play dead (on the plush display) | ↓ or S | Down |
 | Pause, mute everything, music on/off | Esc, M, N | Start |
 
-**Throwing:** tap or hold **F**. Holding it shows a dotted arc that swings between short and long; let go when
-it's where you want it. **F + ↓** drops a bottle straight down off the shelf you're on, which is great when
-someone is underneath. **F + → or ←** rolls one along the shelf or floor like a bowling ball. If a shelf bottle is
+**Throwing:** press and hold **F**, then pick. Let go with nothing else and it's a **lob**: while you hold, a
+dotted arc swings between short and long, so let go when it's where you want it. Still holding F, press **↓** to
+**drop** the bottle straight down off the shelf you're on, which is great when someone is underneath, or **← / →**
+to **roll** it that way along the shelf or floor like a bowling ball. An arrow you were already holding when you
+pressed F doesn't count, so you can throw on the run. On a gamepad it's the same with B and the stick. If a shelf bottle is
 highlighted in front of you, Throw uses that one; otherwise it throws the bottle with the gold ring in your HUD
 slots (Q picks which).
 
 ### Scoring
 
-- **Loot:** minis are worth 1, regular bottles 3, golden minis 5. The two specials are worth **15**: the
-  **rum captain** (there are 4) and the glowing **blue curaçao** (4). Go for those.
+- **Specials:** the **rum captain** (there are 10) and the glowing **blue curaçao** (10) smoke on the shelf. Turn them
+  all in and the night is 100%. Smash or throw one and it's gone, so 100% is gone too.
+- **Other bottles:** each one you turn in is 1 bonus point.
 - **Buzz:** smash a bottle on the floor and you can lap up the spill (E). Each sip is a Buzz step, up to 5, and
-  Buzz **multiplies everything you score** (x1.5, x2 … up to x3.5). The catch: you get slower and wobblier, your
+  your Buzz **at the end of the night multiplies your bonus points** (x1.5, x2 … up to x3.5). The catch: you get slower and wobblier, your
   aim sways, and from step 3 you get hiccups. Every third hiccup pops a bottle out of your paws. Getting hit
   costs a Buzz step and makes you drop a bottle.
-- **Mess:** every bottle that smashes scores Mess (half its value, times your Buzz). Mess only counts if you climb
-  out. Bob's missed throws count as your Mess too, because the store blames the raccoon.
-- **Your night score** is what you banked, plus Mess and anything still in your paws if you climb out. If you're
-  caught, only what you banked counts. The report card grades it as a percentage of the night's target:
-  **A** from 90%, B 80%, C 70%, D 60%, F below.
+- **Your night score** is the percentage of specials you turned in, plus bonus points × Buzz. Climbing out turns in
+  whatever's in your paws. If you're caught, what's in your paws is lost. The letter comes from the specials
+  percentage alone: **A** from 90%, B 80%, C 70%, D 60%, F below.
 
 ### Who's after you
 
 - **The floor scrubber** patrols the floor. It races to any crash and slurps up spills before you can drink them.
   **Don't touch it:** bump into it and it sets off a siren that calls Bob over, and brings him in early if he
-  isn't there yet. Knock it over with a bottle and it's out for 4 seconds.
+  isn't there yet. **Don't let it see you either:** its camera throws a blue cone along the floor ahead, and every
+  so often it stops and slowly cranks its eye up a telescoping pole (you'll hear the servo whine) to scan each board
+  as it rises past, then holds at the top boards. Its camera can't see through a shelf board or an end panel, and
+  playing dead in the plush hides you. Knock it over with a bottle and it's out for 4 seconds; the camera head up
+  on its pole is a target too, so drop one on it from the board above.
 - **Officer Bob** comes in the front door about a third of the way through the night and searches with his
   flashlight. If the beam lands on you, he shouts and chases. If his catch pole reaches you, you're caught.
   - **Hide:** shelf ends and the counter block his beam. Up close, get up high, above where he can point it. Or
@@ -95,8 +108,8 @@ slots (Q picks which).
 ### Testing notes
 
 **The night log:** on the report card, press **L** (Select on a gamepad) to flip it over. It lists everything that
-scored or cost you, with times: each hand-up with its Buzz multiplier, drinks, hits and what caused them, falls,
-sirens, Bob's arrival, the Mess total, and what being caught cost you. The same log is printed to the browser
+scored or cost you, with times: each hand-up, smashed specials, drinks, hits and what caused them, falls,
+sirens, Bob's arrival, what being caught cost you, and the final sum. The same log is printed to the browser
 console (F12), so you can copy it and send it over.
 
 The shelves are the same every run, so you can learn the store. When something feels off, note what you were doing,
@@ -131,7 +144,8 @@ npm run build     # dist/
 Agreed with the host before this pass:
 
 - **Bottle damage and enemy health** (open on the board): no health bars. A bottle knocks an enemy off its feet,
-  the scrubber for 4 s and Bob for 1.5 s. Knocked down mid-chase, Bob gets up still chasing. A bottle that lands
+  the scrubber for 4 s and Bob for 4.5 s (host, 2026-11-07: was 1.5). Knocked down mid-chase, Bob gets up
+  and shouts for 0.6 s before he comes at you again, so he can never catch you the instant he stands. A bottle that lands
   on you is an ordinary 5% hit. Hitting a display (the plush, the mini-bottle rack) makes the biggest noise ring.
 - **Hiccup lob** fires on every third hiccup, not every one, so hauling a load at high Buzz is still possible
   (`BUZZ.hiccupLobEvery`; set it to 1 for the board's version).
@@ -146,11 +160,15 @@ Agreed with the host before this pass:
   hisses "Pssst! Don't smash ALL the merchandise!" (or one of two others). A hand-up starts the count over. That
   line replaces the usual "Smash it!" cheer on that crash. The count is `NAG_EVERY`.
 
-- **Letter grades on the school scale** (host): the card shows your night score as a percentage of the night's
-  target, with the letter it earns: A from 90%, B 80%, C 70%, D 60%, F below. A and B are green, C and D yellow,
-  F red. The target is 300 on night 1 (`NIGHT.target`), set from the host's playtest scores of 245 and 300. It
-  replaces the board's par of 80, which the 5x specials made far too easy, and the board's half/1x/1.5x/2x cut
-  points. The word "par" doesn't appear on screen, and the HUD bar runs 0 to 100% with the letters at their marks.
+- **Scoring is specials plus bonus** (host, 2026-11-08): turning in every special in the level is 100%, and the
+  night score is that percentage + (other bottles turned in × Buzz at the end of the night). It replaces loot
+  values, Mess and par. A smashed or thrown special can't be turned in, so 100% is out of reach; that includes
+  specials Bob grabs and throws. Builder's calls: only bottles turned in earn bonus (smashing earns a spill to drink
+  instead), the letter comes from the specials percentage alone, so bonus points can't buy a grade, and climbing
+  out turns in what's in your paws. A and B are green, C and D yellow, F red. `SPECIALS` in `src/config.ts` sets
+  how many a level has; the HUD bar runs 0 to 100% with the letters at their marks.
+- **Specials smoke on the shelf** (host, 2026-11-08): wisps rise from the neck, cream for rum and pale blue for
+  curaçao. They stop once the bottle leaves the shelf.
 - **Every popup is wood paneling** (host). The report card, the shelter slip and the pause menu all draw through
   `popup()` in `src/render/paint.ts`, and their text and line colours come from `POPUP` next to it, so restyling
   popups is one change. The shelter slip keeps its form-style header and the red CAUGHT stamp. The HUD panels and
@@ -163,19 +181,29 @@ Agreed with the host before this pass:
 - **Bob throws back** (host, 2026-11-06): mid-chase, if you're up a shelf out of pole reach and in his beam, he
   grabs the nearest bottle he can reach off a shelf (within 140 px, no higher than 200 px), holds it over his head
   for 0.5 s, then lobs it at where you are at that moment. Moving after the wind-up dodges it. A hit is the usual
-  5% and knockback, which can throw you off a high board into a fall knockout. A miss smashes and counts as your
-  Mess, since the store blames the raccoon. His bottles can't hit him. He throws at most every 2.4 s, and if he's
+  5% and knockback, which can throw you off a high board into a fall knockout. A miss smashes. His bottles can't hit him. He throws at most every 2.4 s, and if he's
   knocked down or gives up mid wind-up, he drops it. With nothing on a shelf near him, he doesn't throw.
 - **The scrubber snitches** (host, 2026-11-06): roll into it (or let it rush into you) on the floor and it sets
   off a 3 s siren, the biggest noise ring there is (1000 px). Bob comes to it if he's inside, and if he isn't due
   yet, the siren brings him in early and he heads straight for it. It can only go off once every 8 s. Knocking
   it over with a bottle still buys 4 s of quiet. All the numbers are in `BOB_THROW` and `SIREN` in
   `src/config.ts`.
+- **The snitch-cam** (host, 2026-11-07): the scrubber's camera spots you and sets off the same siren, so the high
+  shelves aren't safe from it. Guesses: a 260 px cone, about twice as wide as Bob's, panning while it patrols; a
+  periscope stop every 7-11 s on patrol; the eye rises 80 px/s to 360 px (about 4 s), scans 3 s at the top
+  turning round halfway, then tucks back down. It only watches while patrolling or peeking (rushing to a crash or
+  mopping, it's busy). Shelf boards block its view as well as end panels, so it sees along a board only while its
+  eye is level with it. Numbers are in `SCRUBBER` in `src/config.ts`.
+- **Bob sees you at his feet** (host, 2026-11-07): his flashlight can't tilt down to the floor right in front of
+  him, so anywhere in front of him inside his catch-pole reach counts as seen.
 
 Smaller calls:
 
 - **Out of Bob's sight:** his flashlight is a cone that sweeps up and down. Shelf units' end panels and the counter
   block it. A shelf hides you from a distance; up close, you hide by jumping up above where his beam can tilt.
+  A post within 24 px of a light (his flashlight or the snitch-cam) doesn't block it: the light is held past it.
+  Without that, standing beside a post blanked his whole beam. Where a post does stop a light, the post lights up,
+  so the cone reads as hitting the end of the shelf, not slipping behind it.
 - **Bottles in the air pass through shelf boards.** Knocked bottles fall to the floor, so drinking means coming down
   to where the scrubber is, and a lob lands on the floor (or whoever is standing there), not on a shelf.
 - A bottle that hits someone damages them and makes no noise ring. Only a bottle that hits nothing rings.

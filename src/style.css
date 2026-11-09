@@ -204,10 +204,39 @@ html {
   text-shadow: 0 0.3rem 0 #120d14;
 }
 #front.ready #front-prompt {
-  color: var(--amber);
-  opacity: 1;
-  text-shadow: 0 0.3rem 0 #120d14, 0 0 1.8rem rgba(242, 162, 58, 0.45);
-  animation: front-flash 1.1s ease-in-out infinite;
+  display: none;
+}
+#front-menu {
+  position: absolute;
+  left: 50%;
+  top: 25.6rem;
+  transform: translateX(-50%);
+  display: none;
+  gap: 2rem;
+  white-space: nowrap;
+}
+#front.ready #front-menu {
+  display: flex;
+}
+#front-menu button {
+  margin: 0;
+  padding: 0.5rem 2.4rem 0.7rem;
+  border: 0.3rem solid transparent;
+  border-radius: 1rem;
+  background: transparent;
+  font: inherit;
+  font-size: 3rem;
+  font-weight: 600;
+  color: #d9c7a3;
+  text-shadow: 0 0.3rem 0 #120d14;
+  cursor: pointer;
+}
+#front-menu button.picked {
+  border-color: var(--edge);
+  background: var(--amber);
+  color: var(--edge);
+  text-shadow: none;
+  box-shadow: 0 0.4rem 0 var(--edge), 0 0 2.4rem rgba(242, 162, 58, 0.45);
 }
 /* The bandit, peeking over the counter (the counter comes after it, so it hides the bandana). */
 #front img {
@@ -402,9 +431,6 @@ html {
 @keyframes front-pop {
   from { opacity: 0; transform: translateY(4rem); }
 }
-@keyframes front-flash {
-  50% { opacity: 0.35; }
-}
 @media (prefers-reduced-motion: reduce) {
-  #front.fonts .front-sign, .front-sway, #front img, #front.ready #front-prompt { animation: none; }
+  #front.fonts .front-sign, .front-sway, #front img { animation: none; }
 }

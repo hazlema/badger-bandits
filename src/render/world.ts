@@ -1,13 +1,18 @@
 // Draws the level and everyone in it, in world coordinates under a camera.
 
-import { BOB, BOB_THROW, NIGHT, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
+import { BOB, BOB_THROW, NIGHT, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
 import type { Game, Raccoon } from '../sim/game';
-import type { ItemKind, Level } from '../sim/level';
+import { isSpecial, type ItemKind, type Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
 
 export interface Prompts { grab: string; up: string; down: string; jump: string; throw: string; swap: string; hoot: string }
+
+/** Fill {grab}, {throw} and friends with the player's own keys. */
+export function withKeys(s: string, k: Prompts): string {
+  return s.replace(/\{(\w+)\}/g, (_, name: keyof Prompts) => k[name]);
+}
 
 export class WorldView {
   camX = 0;
@@ -41,7 +46,7 @@ export class WorldView {
 
     if (L.id === 'roof') this.roof(c, g, time);
     else if (L.id === 'crawl') this.crawl(c, g, time);
-    else this.store(c, g, time);
+    else this.store(c, g, time, keys);
 
     this.raccoon(c, g, R, time);
     if (L.id === 'store') {
@@ -211,7 +216,7 @@ export class WorldView {
 
   /* ------------------------------------------------------------ store */
 
-  private store(c: Ctx, g: Game, time: number) {
+  private store(c: Ctx, g: Game, time: number, keys: Prompts) {
     const L = g.level;
     const x0 = this.camX - 40;
     const x1 = this.camX + WORLD_VIEW_W + 40;
@@ -290,6 +295,13 @@ export class WorldView {
     c.fillStyle = withAlpha('#e2b56a', 0.5);
     c.fillRect(910, L.floorY + 9, 500, 3);
 
+    // Tutorial chalkboards
+    for (const p of L.posters ?? []) {
+      fillRR(c, p.x - p.w / 2, p.y, p.w, 46 + p.lines.length * 24, 8, '#2f3a33', '#8c6a46', 5);
+      text(c, p.title, p.x, p.y + 25, 21, C.gold, 'center', 700);
+      p.lines.forEach((s, i) => text(c, withKeys(s, keys), p.x, p.y + 54 + i * 24, 15, C.cream, 'center', 500));
+    }
+
     // Shelf units
     L.units.forEach((u, i) => {
       if (u.x > x1 || u.x + u.w < x0) return;
@@ -320,6 +332,7 @@ export class WorldView {
       // The rum captain turns his head and salutes when you get close.
       const near = Math.hypot(g.raccoon.x - b.x, g.raccoon.y - b.y) < 90;
       drawBottle(c, b.x, b.y, b.kind, b.id, 0, { salute: b.kind === 'rum' && near ? Math.min(1, (time * 4) % 6) : 0, face: Math.sign(g.raccoon.x - b.x) });
+      if (isSpecial(b.kind)) drawSmoke(c, b.x, b.y - 27, b.kind, b.id, time);
     }
     L.units.forEach((u) => {
       if (u.x > x1 || u.x + u.w < x0) return;
@@ -424,7 +437,7 @@ export class WorldView {
       for (const dx of [-3, 0, 3]) ellipse(c, pr.x + pr.facing * 4 + dx * 0.6, pr.y - 2.5 + Math.abs(dx) * 0.2, 1, 0.8, withAlpha('#7fd8ff', a));
     }
 
-    this.scrubber(c, g, time);
+    if (!g.tutorial) this.scrubber(c, g, time);
   }
 
   /** The dotted arc while you hold Throw: exactly where the lob will fly. */
@@ -463,6 +476,55 @@ export class WorldView {
       return;
     }
     const rush = S.state === 'rush';
+    const watching = S.state === 'patrol' || S.state === 'peek';
+    const o = g.camOrigin();
+    if (watching) {
+      // The snitch-cam's cone: cool cyan, cut by shelf panels and boards, same as the sim's sight check.
+      const pts: { x: number; y: number }[] = [o];
+      const hits: { x: number; y: number; t: number }[] = [];
+      const n = 24;
+      for (let i = 0; i <= n; i++) {
+        const a = S.cam - SCRUBBER.camHalf + (2 * SCRUBBER.camHalf * i) / n;
+        const dx = S.dir * Math.cos(a);
+        const dy = -Math.sin(a);
+        const { t, post } = castRay(g.level, o.x, o.y, dx, dy, SCRUBBER.camRange, true);
+        pts.push({ x: o.x + dx * t, y: o.y + dy * t });
+        if (post !== undefined) hits.push({ x: post, y: o.y + dy * t, t });
+      }
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      const gr = c.createRadialGradient(o.x, o.y, 3, o.x, o.y, SCRUBBER.camRange);
+      gr.addColorStop(0, withAlpha('#22b8ff', 0.5));
+      gr.addColorStop(1, withAlpha('#22b8ff', 0));
+      c.fillStyle = gr;
+      c.beginPath();
+      pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+      c.closePath();
+      c.fill();
+      // Scan lines sliding along the cone.
+      c.strokeStyle = withAlpha('#9fe4ff', 0.18);
+      c.lineWidth = 1;
+      for (let k = 0; k < 3; k++) {
+        const r = ((time * 90 + k * 80) % SCRUBBER.camRange) + 10;
+        c.beginPath();
+        c.arc(o.x, o.y, r, S.dir === 1 ? -S.cam - SCRUBBER.camHalf : Math.PI + S.cam - SCRUBBER.camHalf, S.dir === 1 ? -S.cam + SCRUBBER.camHalf : Math.PI + S.cam + SCRUBBER.camHalf);
+        c.stroke();
+      }
+      postSplash(c, g.level, hits, '#22b8ff', 0.5, SCRUBBER.camRange);
+      c.restore();
+    }
+    // The telescoping pole, when the eye is up.
+    const raised = S.eye > SCRUBBER.h + 2;
+    if (raised) {
+      const px = S.x + S.dir * 4;
+      const top = y - S.eye;
+      const len = y - 26 - top;
+      for (let k = 0; k < 3; k++) {
+        const w0 = 7 - k * 2;
+        const y0 = y - 26 - (len * k) / 3;
+        fillRR(c, px - w0 / 2, y0 - len / 3 - 2, w0, len / 3 + 4, 1.5, k % 2 ? '#8f989f' : '#a9b2b8', C.ink, 1.2);
+      }
+    }
     ellipse(c, S.x, y - 2, w / 2 + 4, 4, withAlpha('#000', 0.3));
     fillRR(c, S.x - w / 2, y - 14, w, 12, 5, '#5f6670', C.ink, 2);
     c.beginPath();
@@ -473,7 +535,13 @@ export class WorldView {
     c.lineWidth = 2;
     c.stroke();
     const blink = Math.sin(time * (rush ? 18 : 4)) > 0;
-    ellipse(c, S.x + S.dir * 8, y - 22, 4, 4, rush ? (blink ? '#ff5a44' : '#7a2a20') : blink ? '#6fd3ff' : '#2a5a70');
+    const lens = rush ? (blink ? '#ff5a44' : '#7a2a20') : blink ? '#6fd3ff' : '#2a5a70';
+    if (raised) {
+      // Camera head up on the pole, lens toward where it's looking.
+      fillRR(c, S.x + S.dir * 4 - 9, o.y - 7, 18, 14, 4, '#5f6670', C.ink, 2);
+      ellipse(c, o.x, o.y, 4, 4, lens);
+      glow(c, o.x, o.y, 10, '#6fd3ff', 0.35);
+    } else ellipse(c, o.x, o.y, 4, 4, lens);
     for (let i = 0; i < 2; i++) {
       const bx = S.x + (i ? 1 : -1) * 14;
       ellipse(c, bx, y - 2, 7, 3, '#3a6fb0', (time * (rush ? 20 : 8)) % 3.14);
@@ -521,13 +589,15 @@ export class WorldView {
     // Flashlight cone, cut by the same shelf panels and counter the sim uses.
     const chase = B.state === 'chase' || B.state === 'shout';
     const pts: { x: number; y: number }[] = [o];
+    const hits: { x: number; y: number; t: number }[] = [];
     const n = 28;
     for (let i = 0; i <= n; i++) {
       const a = B.beam - BOB.beamHalf + (2 * BOB.beamHalf * i) / n;
       const dx = B.dir * Math.cos(a);
       const dy = -Math.sin(a);
-      const t = castRay(L, o.x, o.y, dx, dy, BOB.beamRange);
+      const { t, post } = castRay(L, o.x, o.y, dx, dy, BOB.beamRange);
       pts.push({ x: o.x + dx * t, y: o.y + dy * t });
+      if (post !== undefined) hits.push({ x: post, y: o.y + dy * t, t });
     }
     c.save();
     c.globalCompositeOperation = 'lighter';
@@ -539,6 +609,7 @@ export class WorldView {
     pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
     c.closePath();
     c.fill();
+    postSplash(c, L, hits, chase ? '#fff4c8' : '#ffe9a6', chase ? 0.75 : 0.6, BOB.beamRange);
     c.restore();
 
     const x = B.x;
@@ -661,12 +732,13 @@ export class WorldView {
     if (R.state !== 'move' && R.state !== 'playdead') return;
     let s = '';
     if (L.id === 'store') {
-      if (g.atHole()) s = R.carry.length ? `${k.grab} hand up · ${k.up} climb out` : `${k.up} climb out (ends the night)`;
+      if (g.atHole() && g.tutorial) s = R.carry.length ? `${k.grab} hand up` : g.lesson ? '' : `${k.up} finish the tutorial`;
+      else if (g.atHole()) s = R.carry.length ? `${k.grab} hand up · ${k.up} climb out` : `${k.up} climb out (ends the night)`;
       else if (R.state === 'playdead') s = 'playing dead…';
-      else if (g.onPlush() && g.bobInside) s = `${k.down} play dead`;
+      else if (g.onPlush() && (g.bobInside || g.tutorial)) s = `${k.down} play dead`;
       else if (g.spills.some((sp) => Math.abs(sp.y - R.y) < 1 && R.grounded && Math.abs(sp.x - R.x) < 32)) s = `${k.grab} lap it up`;
-      else if (R.aimT !== null) s = `let go of ${k.throw} to throw`;
-      else if (g.highlighted()) s = `${k.grab} grab · ${k.throw} throw (+${k.up} lob, +${k.down} drop, +→ roll)`;
+      else if (R.aimT !== null) s = `let go to lob · ${k.down} drop · ←/→ roll`;
+      else if (g.highlighted()) s = `${k.grab} grab · hold ${k.throw} to throw`;
       else if (!g.toteTaken && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.tote!.x + L.tote!.w / 2)) < 40) s = `${k.grab} take the tote bag`;
       else if (R.grounded && R.y === L.counter!.y && Math.abs(R.x - (L.rack!.x + L.rack!.w / 2)) < 50 && g.rack.stock > 0) s = `${k.grab} spin the mini-bottle rack`;
       else if (R.carry.length && R.grounded && Math.abs(R.vx) < 20) s = `${k.throw} throw · ${k.hoot} hoot${R.carry.length > 1 ? ` · ${k.swap} switch` : ''}`;
@@ -684,16 +756,13 @@ export class WorldView {
     for (const s of g.says) {
       let x: number;
       let y: number;
-      let accent: string = C.charcoal;
       if (s.who === 'cousin' && L.hole) {
         x = L.hole.x + L.hole.w / 2 - this.camX;
         y = L.ceilingY + 40;
-        accent = '#6a6670';
         y = Math.max(y, 120);
       } else if (s.who === 'bob') {
         x = g.bob.x - this.camX;
         y = L.floorY - 126;
-        accent = '#2c3a5c';
       } else {
         x = g.raccoon.x - this.camX;
         y = g.raccoon.y - g.raccoon.h - 40;
@@ -702,7 +771,7 @@ export class WorldView {
       y *= WORLD_SCALE;
       c.globalAlpha = Math.min(1, s.ttl * 3);
       const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `Officer Bob: ${s.text}` : s.text;
-      bubble(c, label, x, y, accent);
+      bubble(c, label, x, y);
       c.globalAlpha = 1;
     }
   }
@@ -720,35 +789,88 @@ function mix(a: string, b: string, t: number): string {
 }
 
 /** Distance along a ray to the first shelf end panel, the counter, floor or ceiling. */
-function castRay(L: Level, ox: number, oy: number, dx: number, dy: number, max: number): number {
+/** How far a ray goes before something stops it. `post` is the x of the shelf end post that stopped it, if one did. */
+function castRay(L: Level, ox: number, oy: number, dx: number, dy: number, max: number, boards = false): { t: number; post?: number } {
   let best = max;
+  let post: number | undefined;
+  // The scrubber's camera can't see through a shelf board either.
+  if (boards && Math.abs(dy) > 1e-6) {
+    for (const bd of L.boards) {
+      if (bd.unit < 0) continue;
+      const t = (bd.y - oy) / dy;
+      if (t <= 0.5 || t >= best) continue;
+      const x = ox + dx * t;
+      if (x > bd.x1 && x < bd.x2) best = t;
+    }
+  }
   for (const u of L.units) {
     for (const px of [u.x, u.x + u.w]) {
-      if (Math.abs(dx) < 1e-6) continue;
+      if (Math.abs(dx) < 1e-6 || Math.abs(px - ox) < POST_GRACE) continue;
       const t = (px - ox) / dx;
       if (t <= 0.5 || t >= best) continue;
       const y = oy + dy * t;
-      if (y > u.top && y < L.floorY) best = t;
+      if (y > u.top && y < L.floorY) {
+        best = t;
+        post = px;
+      }
     }
   }
-  if (dy > 0) best = Math.min(best, (L.floorY - oy) / dy);
-  if (dy < 0) best = Math.min(best, (L.ceilingY - oy) / dy);
+  const flat = dy > 0 ? (L.floorY - oy) / dy : dy < 0 ? (L.ceilingY - oy) / dy : Infinity;
+  if (flat < best) {
+    best = flat;
+    post = undefined;
+  }
   const k = L.counter;
   if (k) {
     for (const ex of [k.x, k.x + k.w]) {
       const t = (ex - ox) / dx;
       if (t > 0 && t < best) {
         const y = oy + dy * t;
-        if (y >= k.y && y <= k.y + k.h) best = t;
+        if (y >= k.y && y <= k.y + k.h) {
+          best = t;
+          post = undefined;
+        }
       }
     }
     if (dy > 0) {
       const t = (k.y - oy) / dy;
       const x = ox + dx * t;
-      if (t > 0 && t < best && x >= k.x && x <= k.x + k.w) best = t;
+      if (t > 0 && t < best && x >= k.x && x <= k.x + k.w) {
+        best = t;
+        post = undefined;
+      }
     }
   }
-  return best;
+  return { t: best, post };
+}
+
+/**
+ * Where a cone is stopped by a shelf end post, light up that post, so the cut reads as the light
+ * hitting the end of the shelf rather than slipping behind it.
+ */
+function postSplash(c: Ctx, L: Level, hits: { x: number; y: number; t: number }[], col: string, alpha: number, range: number) {
+  const byPost = new Map<number, { y0: number; y1: number; t: number }>();
+  for (const h of hits) {
+    const s = byPost.get(h.x);
+    if (!s) byPost.set(h.x, { y0: h.y, y1: h.y, t: h.t });
+    else {
+      s.y0 = Math.min(s.y0, h.y);
+      s.y1 = Math.max(s.y1, h.y);
+      s.t = Math.min(s.t, h.t);
+    }
+  }
+  for (const [x, s] of byPost) {
+    const a = alpha * (1 - s.t / range);
+    const y0 = Math.max(s.y0 - 6, 0);
+    const y1 = Math.min(s.y1 + 6, L.floorY);
+    const gr = c.createLinearGradient(0, y0, 0, y1);
+    gr.addColorStop(0, withAlpha(col, 0));
+    gr.addColorStop(0.5, withAlpha(col, a));
+    gr.addColorStop(1, withAlpha(col, 0));
+    c.fillStyle = gr;
+    c.fillRect(x - 6, y0, 12, y1 - y0);
+    glow(c, x, (y0 + y1) / 2, Math.max(14, (y1 - y0) / 2), col, a * 0.5);
+  }
 }
 
 function spillColour(kind: ItemKind, id: number): string {
@@ -756,6 +878,16 @@ function spillColour(kind: ItemKind, id: number): string {
   if (kind === 'rum') return '#8a4a1c';
   if (kind === 'curacao') return '#2fa8ff';
   return BOTTLE_GLASS[id % BOTTLE_GLASS.length];
+}
+
+/** Specials smoke while they sit on the shelf, so you can pick them out from across the store (host). */
+function drawSmoke(c: Ctx, x: number, y: number, kind: ItemKind, id: number, time: number) {
+  const col = kind === 'curacao' ? '#a8e0ff' : '#efe2cc';
+  for (let i = 0; i < 6; i++) {
+    const p = (time * 0.5 + id * 0.37 + i / 6) % 1; // 0 at the neck, 1 gone
+    const sway = Math.sin(p * 6 + time * 1.4 + id) * (1 + p * 8);
+    ellipse(c, x + sway, y - p * 50, 2.5 + p * 6, 2 + p * 5, withAlpha(col, 0.75 * (1 - p) * Math.min(1, p * 8)));
+  }
 }
 
 export function drawBottle(

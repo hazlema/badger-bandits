@@ -15,7 +15,7 @@ const tap = (g: Game, key: keyof Input) => {
   g.step(NO_INPUT);
 };
 
-it('night 1 is playable start to finish with real inputs only', () => {
+it('the tutorial path is playable from the roof to the practice store with real inputs only', () => {
   const g = new Game({ seed: 7 });
   const R = g.raccoon;
 
@@ -54,7 +54,7 @@ it('night 1 is playable start to finish with real inputs only', () => {
   tap(g, 'grab');
   expect(R.carry.length).toBe(1);
 
-  // Jump back up to the hole, hand it up, climb out.
+  // Jump back up to the hole and hand it up.
   const hx = g.level.hole!.x + 40;
   until(g, { left: R.x > hx, right: R.x < hx }, () => Math.abs(R.x - hx) < 30, 3);
   until(g, {}, () => Math.abs(R.vx) < 1, 1);
@@ -63,8 +63,6 @@ it('night 1 is playable start to finish with real inputs only', () => {
   until(g, {}, () => false, 0.2);
   expect(g.atHole()).toBe(true);
   tap(g, 'grab');
-  expect(g.banked).toBeGreaterThan(0);
-  tap(g, 'up');
-  expect(g.result?.escaped).toBe(true);
-  expect(g.result!.score).toBeGreaterThan(g.result!.banked);
+  expect(g.specials + g.bonus).toBeGreaterThan(0);
+  expect(g.lessons.size).toBeGreaterThan(0);
 });
