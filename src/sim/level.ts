@@ -2,10 +2,10 @@
 // The store runs left to right from the back (ceiling hole) to the front
 // (counter, door, windows).
 
-import { SPECIALS } from '../config';
+import { NIGHTS, SPECIALS } from '../config';
 import { rng } from './rng';
 
-export type ItemKind = 'mini' | 'regular' | 'golden' | 'rum' | 'curacao';
+export type ItemKind = 'mini' | 'regular' | 'golden' | 'rum' | 'curacao' | 'champagne' | 'can';
 
 export const isSpecial = (kind: ItemKind): boolean => kind in SPECIALS;
 
@@ -48,7 +48,13 @@ export interface Level {
   door?: Rect;
   windows?: Rect;
   scrubberRoute?: [number, number];
+  scrubberStart?: number;
   bobRoute?: [number, number]; // back, front
+  possum?: { x1: number; x2: number; y: number }; // the top of its case stack; it sits in the middle
+  belt?: { x1: number; x2: number; y: number }; // on the counter, running left to right
+  register?: Rect; // only where it can be mashed; otherwise the counter's till is just scenery
+  lights?: number[]; // x of each emergency light
+  rugX?: number;
 }
 
 export function roofLevel(): Level {
@@ -100,39 +106,117 @@ export function crawlLevel(): Level {
   };
 }
 
-/** Night 1: a small store. Board heights are 90 px apart, about one jump. */
-export function storeLevel(seed = 1): Level {
-  const r = rng(seed);
-  const floorY = 500;
+/** Shelf units as [x, width, board heights]. */
+function shelving(defs: [number, number, number[]][]): { units: Unit[]; boards: Board[] } {
   const units: Unit[] = [];
   const boards: Board[] = [];
-  const addUnit = (x: number, w: number, ys: number[]) => {
+  for (const [x, w, ys] of defs) {
     const u = units.length;
     units.push({ x, w, top: Math.min(...ys) });
     for (const y of ys) boards.push({ x1: x, x2: x + w, y, unit: u });
-  };
-  addUnit(40, 260, [410, 320, 230, 130]); // back shelf, top board under the hole
-  addUnit(400, 280, [410, 320, 230, 150]);
-  addUnit(790, 280, [410, 320, 230]);
-  addUnit(1180, 260, [410, 320, 230, 150]);
-  addUnit(1820, 280, [410, 320, 230, 150]);
-  addUnit(2210, 260, [410, 320, 230]);
+  }
+  return { units, boards };
+}
 
+/** Fill the shelves, then swap regular bottles for the night's specials and champagne, anywhere but the shelf under the hole. */
+function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y: number }, night: number): BottleDef[] {
   const bottles: BottleDef[] = [];
   boards.forEach((b, i) => {
-    if (b.unit === 0 && b.y === 130) return; // the hand-up board stays clear
+    if (b.unit === hole.unit && b.y === hole.y) return; // the hand-up board stays clear
     for (let x = b.x1 + 24; x < b.x2 - 16; x += 30) {
       if (r() < 0.3) continue;
       bottles.push({ x, y: b.y, kind: r() < 0.3 ? 'mini' : 'regular', board: i });
     }
   });
-  // A few special bottles, swapped in for regular ones anywhere but the back shelf.
-  for (const [kind, n] of Object.entries(SPECIALS) as [ItemKind, number][]) {
+  const swapIn = (kind: ItemKind, n: number) => {
     for (let k = 0; k < n; k++) {
-      const pool = bottles.filter((b) => b.kind === 'regular' && boards[b.board].unit > 0);
+      const pool = bottles.filter((b) => b.kind === 'regular' && boards[b.board].unit !== hole.unit);
       pool[Math.floor(r() * pool.length)].kind = kind;
     }
-  }
+  };
+  for (const [kind, n] of Object.entries(NIGHTS[night - 1].specials) as [ItemKind, number][]) swapIn(kind, n);
+  swapIn('champagne', NIGHTS[night - 1].champagne);
+  return bottles;
+}
+
+/** The store for a night (1-based). */
+export function nightLevel(night: number): Level {
+  return night === 2 ? checkoutLevel() : storeLevel(1);
+}
+
+/**
+ * Night 2: the hole is in the middle, so every load is a trip inward from one end or the other. The back half is the
+ * possum's, the front half ends in a long checkout lane. The offset shelves (110 px apart) break up night 1's rhythm.
+ */
+function checkoutLevel(): Level {
+  const r = rng(2);
+  const floorY = 500;
+  const { units, boards } = shelving([
+    [50, 260, [410, 320, 230]],
+    [470, 280, [410, 320, 230, 150]],
+    [860, 240, [390, 280, 170]],
+    [1240, 360, [410, 320, 230, 130]], // the top board is under the hole
+    [1880, 280, [390, 280, 170]],
+    [2260, 280, [410, 320, 230, 150]],
+  ]);
+  const bottles = stockShelves(r, boards, { unit: 3, y: 130 }, 2);
+
+  const counter = { x: 2780, y: 420, w: 620, h: 80 };
+  const plush = { x: 1690, y: 450, w: 140, h: 50 };
+  boards.push({ x1: plush.x, x2: plush.x + plush.w, y: plush.y, unit: -1 });
+  const possum = { x1: 350, x2: 450, y: 300 }; // reached from the first shelf's second board
+  boards.push({ ...possum, unit: -1 });
+
+  return {
+    id: 'store',
+    width: 3600,
+    floorY,
+    ceilingY: 40,
+    solids: [{ x: 0, y: floorY, w: 3600, h: 40 }, counter],
+    boards,
+    climbables: [],
+    units,
+    bottles,
+    signs: [],
+    props: [
+      { kind: 'plant', x: 805 },
+      { kind: 'crate', x: 1170 },
+      { kind: 'barrel', x: 1645 },
+      { kind: 'dolly', x: 2210 },
+      { kind: 'cases', x: 2700 },
+    ],
+    start: { x: 1415, y: 130 },
+    hole: { x: 1370, y: 60, w: 90, h: 70 },
+    plush,
+    tote: { x: 2590, y: 440, w: 34, h: 40 },
+    rack: { x: 3240, y: 362, w: 44, h: 58 },
+    counter,
+    belt: { x1: 2810, x2: 3200, y: counter.y },
+    register: { x: 3330, y: 372, w: 58, h: 48 },
+    door: { x: 3500, y: 400, w: 70, h: 100 },
+    windows: { x: 3430, y: 150, w: 160, h: 240 },
+    scrubberRoute: [120, 2750],
+    scrubberStart: 2100,
+    bobRoute: [90, 3480],
+    possum,
+    lights: [300, 880, 1600, 2200, 2750, 3300],
+    rugX: 1640,
+  };
+}
+
+/** Night 1: a small store. Board heights are 90 px apart, about one jump. */
+export function storeLevel(seed = 1): Level {
+  const r = rng(seed);
+  const floorY = 500;
+  const { units, boards } = shelving([
+    [40, 260, [410, 320, 230, 130]], // back shelf, top board under the hole
+    [400, 280, [410, 320, 230, 150]],
+    [790, 280, [410, 320, 230]],
+    [1180, 260, [410, 320, 230, 150]],
+    [1820, 280, [410, 320, 230, 150]],
+    [2210, 260, [410, 320, 230]],
+  ]);
+  const bottles = stockShelves(r, boards, { unit: 0, y: 130 }, 1);
 
   const counter = { x: 2600, y: 420, w: 220, h: 80 };
   const plush = { x: 1560, y: 450, w: 140, h: 50 };
@@ -172,6 +256,7 @@ export function storeLevel(seed = 1): Level {
     door: { x: 2900, y: 400, w: 70, h: 100 },
     windows: { x: 2830, y: 150, w: 160, h: 240 },
     scrubberRoute: [360, 2560],
+    scrubberStart: 1300,
     bobRoute: [90, 2880],
   };
 }

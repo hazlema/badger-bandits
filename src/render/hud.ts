@@ -1,6 +1,6 @@
 // HUD after the comp, in the store's wood: signs hung from the ceiling, cream price tags, the counter along the bottom.
 
-import { BUZZ, GRADES, NIGHT, PRINTS, SEA_LEGS, VIEW_H, VIEW_W } from '../config';
+import { BUZZ, GRADES, NIGHTS, PRINTS, SEA_LEGS, VIEW_H, VIEW_W } from '../config';
 import { multFor, type Game } from '../sim/game';
 import { isSpecial } from '../sim/level';
 import { C, ellipse, FONT, fillRR, GRADE_COLOUR, popup, POPUP, rr, text, withAlpha, woodBoards, type Ctx } from './paint';
@@ -133,11 +133,11 @@ export function drawHud(c: Ctx, g: Game, time: number, k: Prompts) {
     inked(c, 'tote', ex, BAND + 40, 11, '#e6d4b0', 'left', 600);
     ex += 30;
   }
-  // Coins in your fur (none to be had on night 1, but the slot is there).
+  // Coins in your fur, from the till. They only count if you climb out.
   ellipse(c, ex + 8, BAND + 40, 6.5, 6.5, '#6e3a14');
   ellipse(c, ex + 8, BAND + 40, 5, 5, C.gold);
   ellipse(c, ex + 6.5, BAND + 38.5, 1.8, 1.8, '#ffe9a8');
-  inked(c, '0', ex + 19, BAND + 40, 13, C.cream);
+  inked(c, String(g.coins), ex + 19, BAND + 40, 13, C.cream);
 
   // Buzz, a sign hung top centre: a bottle cap per step, filling, and the multiplier.
   const bw = 330;
@@ -187,7 +187,7 @@ export function drawHud(c: Ctx, g: Game, time: number, k: Prompts) {
   }
 
   // Time to dawn, a smaller sign top right.
-  const left = Math.max(0, NIGHT.length - g.t);
+  const left = Math.max(0, g.nightLength - g.t);
   const mm = Math.floor(left / 60);
   const ss = Math.floor(left % 60);
   const cw = 177;
@@ -201,13 +201,20 @@ export function drawHud(c: Ctx, g: Game, time: number, k: Prompts) {
   inked(c, `${mm}:${String(ss).padStart(2, '0')}`, cx + 56, 41, 21, urgent ? C.red : C.cream);
 
   if (!g.bobInside) {
-    const until = NIGHT.length * NIGHT.bobAt - g.t;
+    const until = g.bobDue - g.t;
     if (until < 20) tag(c, cx + cw / 2, 72, 168, 24, 0.02, () => text(c, 'Headlights in the lot…', 0, 0.5, 13, TAG.ink, 'center', 700));
   } else if (g.bob.state === 'chase' || g.bob.state === 'shout') {
     tag(c, cx + cw / 2, 72, 152, 26, -0.03, () => text(c, 'Bob is after you!', 0, 0.5, 14, TAG.red, 'center', 700), '#c8372a');
   }
 
   parBar(c, g);
+
+  // Which night this is, big for the first few seconds.
+  if (g.phase === 'store' && g.t < 3) {
+    c.globalAlpha = Math.min(1, (3 - g.t) * 2);
+    inked(c, `Night ${g.night}`, VIEW_W / 2, 190, 46, C.cream, 'center');
+    c.globalAlpha = 1;
+  }
 }
 
 const BAND = 480;
@@ -351,7 +358,7 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
   c.fillRect(0, 0, VIEW_W, VIEW_H);
   if (page === 1) return drawLog(c, g, time, pad);
   const w = 520;
-  const h = r.escaped ? 420 : 450; // room for the "kept by animal control" row
+  const h = (r.escaped ? 420 : 450) + (r.coins ? 28 : 0); // room for the "kept by animal control" and coins rows
   const x = (VIEW_W - w) / 2;
   const y = (VIEW_H - h) / 2;
   const den = r.escaped;
@@ -359,19 +366,20 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
   popup(c, x, y, w, h, den ? -0.012 : 0.01);
 
   if (den) {
-    text(c, 'Report Card · Night 1', VIEW_W / 2, y + 36, 26, ink, 'center', 700);
+    text(c, `Report Card · Night ${r.night}`, VIEW_W / 2, y + 36, 26, ink, 'center', 700);
     text(c, 'Ashland ABC store · you climbed out', VIEW_W / 2, y + 64, 14, dim, 'center', 500);
   } else {
     // Left-aligned like a form, which leaves the top right for the stamp.
     text(c, 'County Animal Shelter', x + 40, y + 36, 24, ink, 'left', 700);
-    text(c, 'Intake slip & bill for damages', x + 40, y + 62, 14, dim, 'left', 500);
+    text(c, `Intake slip & bill for damages · Night ${r.night}`, x + 40, y + 62, 14, dim, 'left', 500);
     text(c, REASONS[r.reason] ?? '', x + 40, y + 92, 15, ink, 'left', 500);
   }
 
   const rows: [string, string][] = [
     ['Specials turned in', `${r.specials} of ${r.specialsTotal}`],
     ['Specials broken', `${r.specialsBroken}`],
-    ['Bonus bottles', `${r.bonus}`],
+    ['Bonus bottles', `${r.bonus - r.coins}`],
+    ...(r.coins ? ([['Coins, a bonus point each', `${r.coins}`]] as [string, string][]) : []),
     ['Buzz at the end', `x${r.mult}`],
   ];
   if (!den) rows.push(['Kept by animal control', `${r.kept} bottle${r.kept === 1 ? '' : 's'}`]);
@@ -434,7 +442,40 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
     text(c, 'CAUGHT', 0, 1, 34, withAlpha(GRADE_COLOUR.F, 0.95), 'center', 700);
     c.restore();
   }
-  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'A for the title screen · Select for the night log' : 'Space for the title screen · L for the night log', VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `A ${nextUp(r.night)} · Start for the title · Select for the log` : `Space ${nextUp(r.night)} · Esc for the title · L for the log`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+}
+
+const nextUp = (night: number) => (night < NIGHTS.length ? `for night ${night + 1}` : 'for the run total');
+
+export interface NightScore { night: number; score: number; grade: string; escaped: boolean }
+
+/** After the last night: every night's score, the total and the best grade. Only your total carries over (design). */
+export function drawFinal(c: Ctx, run: NightScore[], time: number, pad: boolean) {
+  c.fillStyle = 'rgba(15,10,18,0.7)';
+  c.fillRect(0, 0, VIEW_W, VIEW_H);
+  const { ink, dim } = POPUP;
+  const w = 480;
+  const h = 214 + run.length * 34;
+  const x = (VIEW_W - w) / 2;
+  const y = (VIEW_H - h) / 2;
+  popup(c, x, y, w, h, -0.008);
+  text(c, 'Run Total', VIEW_W / 2, y + 40, 32, ink, 'center', 700);
+  run.forEach((n, i) => {
+    const ry = y + 92 + i * 34;
+    text(c, `Night ${n.night}`, x + 40, ry, 18, ink, 'left', 600);
+    text(c, n.escaped ? 'climbed out' : 'caught', x + 140, ry, 14, dim, 'left', 500);
+    text(c, fmt(n.score), x + w - 92, ry, 18, ink, 'right', 700);
+    text(c, n.grade, x + w - 40, ry, 20, GRADE_COLOUR[n.grade], 'right', 700);
+    c.fillStyle = POPUP.rule;
+    c.fillRect(x + 40, ry + 16, w - 80, 1);
+  });
+  const ty = y + 92 + run.length * 34 + 16;
+  const total = run.reduce((s, n) => s + n.score, 0);
+  const best = GRADES.find((g) => run.some((n) => n.grade === g.name))?.name ?? 'F';
+  text(c, 'Total', x + 40, ty, 24, ink, 'left', 700);
+  text(c, fmt(total), x + w - 92, ty, 24, ink, 'right', 700);
+  text(c, `Best grade: ${best}`, x + 40, ty + 34, 16, ink, 'left', 600);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'A to play again · Start for the title' : 'Space to play again · Esc for the title', VIEW_W / 2, y + h - 24, 16, dim, 'center', 600);
 }
 
 /** The back of the report card: everything that scored or cost you, in order. */
@@ -466,5 +507,5 @@ function drawLog(c: Ctx, g: Game, time: number, pad: boolean) {
     ly += 22;
   }
   if (!g.log.length) text(c, 'Nothing happened. Suspicious.', VIEW_W / 2, y + h / 2, 16, dim, 'center', 500);
-  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? 'Select to flip back · A for the title screen' : 'L to flip back · Space for the title screen', VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `Select to flip back · A ${nextUp(r.night)}` : `L to flip back · Space ${nextUp(r.night)}`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
 }

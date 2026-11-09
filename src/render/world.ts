@@ -5,6 +5,7 @@ import type { Game, Raccoon } from '../sim/game';
 import { isSpecial, type ItemKind, type Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
 import { acUnit, building, chalkboard, crawlAttic, crawlBelow, crawlTunnel, floorProp, propHalfWidth, roofBackdrop, roofDressing, roofVent, trellis, wainscot, woodSign } from './scenery';
+import { caseStack, checkoutBelt, drawPossum, tillRegister } from './checkout';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
 
@@ -27,7 +28,10 @@ export class WorldView {
       this.camX = clampCam(R.x - WORLD_VIEW_W * 0.4, L);
     }
     const lead = R.facing * 90;
-    const want = clampCam(R.x + lead - WORLD_VIEW_W / 2, L);
+    // The Buzz sign hangs over the middle of the screen. Up by a hole in mid-store, swing aside so your cousin isn't behind it.
+    const h = L.id === 'store' ? L.hole : undefined;
+    const byHole = h && R.y <= h.y + h.h + 1 && Math.abs(R.x - (h.x + h.w / 2)) < 200;
+    const want = clampCam(byHole ? h.x + h.w / 2 - 190 / WORLD_SCALE : R.x + lead - WORLD_VIEW_W / 2, L);
     this.camX += (want - this.camX) * 0.08;
     this.camX = clampCam(this.camX, L);
 
@@ -140,7 +144,7 @@ export class WorldView {
     const L = g.level;
     const x0 = this.camX - 40;
     const x1 = this.camX + WORLD_VIEW_W + 40;
-    const frac = g.t / NIGHT.length;
+    const frac = g.t / g.nightLength;
 
     // Wall: warm wood panels
     c.fillStyle = C.wall;
@@ -181,9 +185,9 @@ export class WorldView {
     // Front: sign, windows, door
     const win = L.windows!;
     if (win.x < x1 && win.x + win.w + 200 > x0) {
-      fillRR(c, 2590, 70, 400, 56, 8, '#24304f', '#c9a96a', 3);
-      text(c, 'ABC Store', 2790, 92, 28, C.cream, 'center', 700);
-      text(c, 'Virginia · Beer · Wine · Spirits', 2790, 114, 12, C.creamDim, 'center', 500);
+      fillRR(c, win.x - 240, 70, 400, 56, 8, '#24304f', '#c9a96a', 3);
+      text(c, 'ABC Store', win.x - 40, 92, 28, C.cream, 'center', 700);
+      text(c, 'Virginia · Beer · Wine · Spirits', win.x - 40, 114, 12, C.creamDim, 'center', 500);
       const sky = c.createLinearGradient(0, win.y, 0, win.y + win.h);
       const dawn = Math.max(0, (frac - NIGHT.dawnLightFrom) / (1 - NIGHT.dawnLightFrom));
       sky.addColorStop(0, mix('#151b38', '#7aa0d6', dawn));
@@ -213,9 +217,10 @@ export class WorldView {
       c.fillStyle = '#5a361f';
       c.fillRect(x, L.floorY, 2, 40);
     }
-    fillRR(c, 900, L.floorY + 4, 520, 14, 4, '#7d2f37');
+    const rug = L.rugX ?? 900;
+    fillRR(c, rug, L.floorY + 4, 520, 14, 4, '#7d2f37');
     c.fillStyle = withAlpha('#e2b56a', 0.5);
-    c.fillRect(910, L.floorY + 9, 500, 3);
+    c.fillRect(rug + 10, L.floorY + 9, 500, 3);
 
     // Tutorial chalkboards and whatever's stacked along the wall
     for (const p of L.posters ?? []) {
@@ -224,6 +229,8 @@ export class WorldView {
     for (const p of L.props ?? []) {
       if (p.x + propHalfWidth(p) > x0 && p.x - propHalfWidth(p) < x1) floorProp(c, p, L.floorY, time);
     }
+
+    if (L.possum && L.possum.x2 > x0 && L.possum.x1 < x1) caseStack(c, L.possum, L.floorY);
 
     // Shelf units
     L.units.forEach((u, i) => {
@@ -290,8 +297,15 @@ export class WorldView {
     const k = L.counter!;
     fillRR(c, k.x, k.y, k.w, k.h, 4, C.wood, C.woodDark, 2.5);
     fillRR(c, k.x - 6, k.y - 6, k.w + 12, 10, 3, C.woodLight, C.woodDark, 2);
-    fillRR(c, k.x + 140, k.y - 40, 56, 34, 5, '#55565c', C.ink, 2);
-    fillRR(c, k.x + 146, k.y - 34, 30, 12, 2, '#2d4a3a');
+    if (L.register) tillRegister(c, L.register, g.till, time);
+    else {
+      fillRR(c, k.x + 140, k.y - 40, 56, 34, 5, '#55565c', C.ink, 2);
+      fillRR(c, k.x + 146, k.y - 34, 30, 12, 2, '#2d4a3a');
+    }
+    if (L.belt) {
+      checkoutBelt(c, L.belt, time);
+      for (const b of g.bottles) if (b.state === 'belt') drawBottle(c, b.x, b.y - 7, b.kind, b.id, 0);
+    }
     const rk = L.rack!;
     const spin = g.rack.spin;
     c.fillStyle = '#8f8b93';
@@ -360,6 +374,7 @@ export class WorldView {
       for (const dx of [-3, 0, 3]) ellipse(c, pr.x + pr.facing * 4 + dx * 0.6, pr.y - 2.5 + Math.abs(dx) * 0.2, 1, 0.8, withAlpha('#7fd8ff', a));
     }
 
+    if (g.possum) drawPossum(c, g.possum, time);
     if (!g.tutorial) this.scrubber(c, g, time);
   }
 
@@ -608,14 +623,15 @@ export class WorldView {
     c.fillRect(x0, 0, WORLD_VIEW_W + 80, VIEW_H);
     c.save();
     c.globalCompositeOperation = 'lighter';
-    for (const lx of [330, 1000, 1500, 2150, 2760]) {
+    const lights = L.lights ?? [330, 1000, 1500, 2150, 2760];
+    for (const lx of lights) {
       if (lx < x0 - 300 || lx > x0 + WORLD_VIEW_W + 380) continue;
       const pulse = 0.85 + 0.15 * Math.sin(time * 3 + lx);
       glow(c, lx, L.ceilingY + 10, 260, '#ff6a4a', 0.22 * pulse);
     }
     glow(c, g.raccoon.x, g.raccoon.y - 14, 120, C.warm, 0.08);
     c.restore();
-    for (const lx of [330, 1000, 1500, 2150, 2760]) {
+    for (const lx of lights) {
       fillRR(c, lx - 16, L.ceilingY, 32, 12, 4, '#3a1c18', C.ink, 1.5);
       ellipse(c, lx, L.ceilingY + 8, 9, 5, '#ff7a5a');
     }
@@ -645,6 +661,18 @@ export class WorldView {
       text(c, 'HOOOO', R.x + R.facing * (30 + k * 30), R.y - 40 - k * 16, 14 + k * 6, withAlpha(C.cream, 1 - k), 'center', 700);
     }
     if (R.seaLegs > 0) text(c, '⚓', R.x - R.facing * 18, R.y - R.h - 8, 13, '#e8c27a', 'center', 700);
+    // Bubbles fizzing off the champagne: more of them, higher, the more it's shaken.
+    for (let i = 0; i < Math.ceil(R.fizz * 8); i++) {
+      const k = (time * 1.6 + i * 0.37) % 1;
+      ellipse(c, R.x + R.facing * 14 + Math.sin(k * 9 + i) * 6, R.y - 22 - k * (20 + R.fizz * 34), 1.6 + hash(i) * 1.4, 1.6 + hash(i) * 1.4, withAlpha('#fff3c4', 0.85 * (1 - k)));
+    }
+    // The spray blasting out behind a popped cork.
+    if (R.rocketT > 0) {
+      for (let i = 0; i < 14; i++) {
+        const k = hash(i + Math.floor(time * 30));
+        ellipse(c, R.x - R.facing * (20 + k * 80), R.y - 16 + (hash(i * 3) - 0.5) * 26 * k, 3 - k * 2, 3 - k * 2, withAlpha('#fff3c4', 0.9 - k * 0.7));
+      }
+    }
   }
 
   /* ---------------------------------------------------------- prompts */
@@ -659,9 +687,12 @@ export class WorldView {
       else if (g.atHole()) s = R.carry.length ? `${k.grab} hand up · ${k.up} climb out` : `${k.up} climb out (ends the night)`;
       else if (R.state === 'playdead') s = 'playing dead…';
       else if (g.onPlush() && (g.bobInside || g.tutorial)) s = `${k.down} play dead`;
+      else if (g.atBelt() && R.carry.length) s = `${k.grab} put on the belt`;
+      else if (g.atTill()) s = `${k.grab} mash the till`;
       else if (g.spills.some((sp) => Math.abs(sp.y - R.y) < 1 && R.grounded && Math.abs(sp.x - R.x) < 32)) s = `${k.grab} lap it up`;
       else if (R.aimT !== null) s = `let go to lob · ${k.down} drop · ←/→ roll`;
       else if (g.highlighted()) s = `${k.grab} grab · hold ${k.throw} to throw`;
+      else if (R.fizz > 0.2) s = `tap ${k.grab} to pop the cork`;
       else if (!g.toteTaken && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.tote!.x + L.tote!.w / 2)) < 40) s = `${k.grab} take the tote bag`;
       else if (R.grounded && R.y === L.counter!.y && Math.abs(R.x - (L.rack!.x + L.rack!.w / 2)) < 50 && g.rack.stock > 0) s = `${k.grab} spin the mini-bottle rack`;
       else if (R.carry.length && R.grounded && Math.abs(R.vx) < 20) s = `${k.throw} throw · ${k.hoot} hoot${R.carry.length > 1 ? ` · ${k.swap} switch` : ''}`;
@@ -686,6 +717,9 @@ export class WorldView {
       } else if (s.who === 'bob') {
         x = g.bob.x - this.camX;
         y = L.floorY - 126;
+      } else if (s.who === 'possum' && g.possum) {
+        x = g.possum.x - this.camX;
+        y = g.possum.y - 44;
       } else {
         x = g.raccoon.x - this.camX;
         y = g.raccoon.y - g.raccoon.h - 40;
@@ -693,7 +727,7 @@ export class WorldView {
       x = Math.max(60, Math.min(WORLD_VIEW_W - 60, x)) * WORLD_SCALE;
       y *= WORLD_SCALE;
       c.globalAlpha = Math.min(1, s.ttl * 3);
-      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `Officer Bob: ${s.text}` : s.text;
+      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `Officer Bob: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
       bubble(c, label, x, y);
       c.globalAlpha = 1;
     }
@@ -798,6 +832,8 @@ function postSplash(c: Ctx, L: Level, hits: { x: number; y: number; t: number }[
 
 function spillColour(kind: ItemKind, id: number): string {
   if (kind === 'golden') return C.gold;
+  if (kind === 'champagne') return '#e9d98a';
+  if (kind === 'can') return '#b8c0c8';
   if (kind === 'rum') return '#8a4a1c';
   if (kind === 'curacao') return '#2fa8ff';
   return BOTTLE_GLASS[id % BOTTLE_GLASS.length];
@@ -817,6 +853,8 @@ export function drawBottle(
   c: Ctx, x: number, y: number, kind: ItemKind, id: number, rot: number,
   opts: { salute?: number; face?: number } = {},
 ) {
+  if (kind === 'can') return drawCan(c, x, y, rot);
+  if (kind === 'champagne') return drawChampagne(c, x, y, rot);
   const mini = kind === 'mini' || kind === 'golden';
   const bw = mini ? 8 : 13;
   const bh = mini ? 11 : 18;
@@ -859,6 +897,37 @@ export function drawBottle(
   c.fillStyle = withAlpha('#ffffff', 0.35);
   c.fillRect(-bw / 2 + 2, -bh + 2, 2, bh - 5);
   if (kind === 'golden') glow(c, 0, -bh / 2, 16, '#fff1b8', 0.5);
+  c.restore();
+}
+
+/** A dented soda can, for the possum to throw. */
+function drawCan(c: Ctx, x: number, y: number, rot: number) {
+  c.save();
+  c.translate(x, y - 8);
+  c.rotate(rot);
+  fillRR(c, -5, -8, 10, 16, 2, '#c8cdd2', C.ink, 1.5);
+  c.fillStyle = '#c23a2a';
+  c.fillRect(-3.5, -4, 7, 7);
+  c.restore();
+}
+
+/** Dark green with gold foil on the neck and a cream label, so it reads as bubbly from across the store. */
+function drawChampagne(c: Ctx, x: number, y: number, rot: number) {
+  c.save();
+  c.translate(x, y);
+  if (rot) {
+    c.translate(0, -15);
+    c.rotate(rot);
+    c.translate(0, 15);
+  }
+  fillRR(c, -7, -20, 14, 20, 4, '#1f4a33', C.ink, 1.5);
+  fillRR(c, -3, -31, 6, 13, 2, '#1f4a33', C.ink, 1.5);
+  fillRR(c, -3.5, -34, 7, 11, 2, C.gold, C.ink, 1.2);
+  fillRR(c, -5, -14, 10, 8, 1, C.cream);
+  c.fillStyle = C.gold;
+  c.fillRect(-5, -11, 10, 1.5);
+  c.fillStyle = withAlpha('#ffffff', 0.3);
+  c.fillRect(-5, -18, 2, 14);
   c.restore();
 }
 

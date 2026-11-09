@@ -146,6 +146,42 @@ export const SCRUBBER = {
 
 export const RACK = { stock: 8, goldenChance: 0.1, spinTime: 1.1 }; // (guess)
 
+// What changes from night to night. Each night runs a minute longer (design); the counts are guesses.
+export const NIGHTS = [
+  { length: NIGHT.length, specials: SPECIALS, champagne: 0 },
+  { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5 },
+] as const;
+
+// Champagne (design): run with it and it fizzes up, tap Grab to pop the cork and get rocketed. All guesses.
+export const FIZZ = {
+  full: 3, // s of running to shake it up all the way
+  settle: 6, // s of standing still for it to go flat again
+  minSpeed: 340, // px/s of the rocket with no fizz
+  maxSpeed: 780, // px/s at full fizz
+  time: 0.55, // s the rocket carries you: about 190 to 430 px
+  lift: 260, // px/s upward as it goes off
+  tap: 0.22, // s: a press shorter than this pops the cork, so holding Grab to scoop never does
+};
+
+// The checkout belt (design): bottles creep along it and smash off the end. All guesses.
+export const BELT = { speed: 36, gap: 22, ring: 600 }; // px/s, px between bottles, noise radius of each crash
+
+// The cash register (design): mash the keys until the drawer springs open. All guesses.
+export const TILL = { mashes: 6, coins: 12, sprayTime: 1.3 };
+
+// The turf-war possum (design). All guesses, apart from the can's damage, which is HIT.damage (design).
+export const POSSUM = {
+  range: 320, // px: how close counts as its patch
+  windup: 0.55, // s it holds the can up, so you see it coming
+  every: 2.2, // s between cans
+  speed: 340, // px/s across; sets the flight time, within the limits below
+  minFlight: 0.5,
+  maxFlight: 1.0,
+  woozy: 9, // s it stays woozy after a bottle soaks it
+  wideBy: 520, // px its woozy throws can land to either side, in total
+  loopyFlight: 1.5, // s a woozy throw stays up
+};
+
 // Letter grades on the school scale (host, 2026-11-06): the percentage of the night's specials you turned in.
 export const GRADES = [
   { at: 90, name: 'A' },

@@ -3,9 +3,9 @@ import '@fontsource/fredoka/600.css';
 import '@fontsource/fredoka/700.css';
 import './style.css';
 import { Sound } from './audio';
-import { DT, VIEW_H, VIEW_W } from './config';
+import { DT, NIGHTS, VIEW_H, VIEW_W } from './config';
 import { Controls } from './input';
-import { drawCard, drawHud, drawPause } from './render/hud';
+import { drawCard, drawFinal, drawHud, drawPause, type NightScore } from './render/hud';
 import { WorldView, type Prompts } from './render/world';
 import { Game } from './sim/game';
 
@@ -16,8 +16,9 @@ const sound = new Sound(localStorageGet('plc.muted') === '1', localStorageGet('p
 // Start audio inside a real user gesture, which every browser accepts.
 for (const ev of ['keydown', 'pointerdown', 'touchstart']) addEventListener(ev, () => sound.unlock(), { capture: true });
 const params = new URLSearchParams(location.search);
-// ?store and ?training skip the menu, for testing.
-const skipTo = params.has('training') ? 'training' : params.has('store') ? 'store' : null;
+// ?store, ?night=2 and ?training skip the menu, for testing.
+const skipTo = params.has('training') ? 'training' : params.has('store') || params.has('night') ? 'store' : null;
+const firstNight = NIGHTS[Number(params.get('night')) - 1] ? Number(params.get('night')) : 1;
 
 // The front door (index.html) is the loading screen, then the start screen. It holds long enough to be seen and
 // ignores keys until everything is in.
@@ -37,9 +38,11 @@ Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTim
 });
 
 let seed = Date.now() % 100000;
+let night = firstNight;
+let run: NightScore[] = []; // the nights finished so far this run
 let game = newGame();
 let view = new WorldView();
-let mode: 'title' | 'play' | 'paused' | 'card' = skipTo ? 'play' : 'title';
+let mode: 'title' | 'play' | 'paused' | 'card' | 'final' = skipTo ? 'play' : 'title';
 front.classList.toggle('hidden', mode !== 'title');
 let pauseChoice = 0; // 0 Resume, 1 Quit to title
 let cardPage = 0; // 0 the report card, 1 the night log on its back
@@ -49,14 +52,29 @@ let offY = 0;
 
 function newGame(start: 'store' | 'training' | 'tutorial' = skipTo ?? 'store') {
   seed = (seed * 16807 + 7) % 2147483647;
-  return new Game({ seed, start });
+  return new Game({ seed, start, night });
 }
 
 function restart(to: typeof mode = 'play') {
+  night = firstNight;
+  run = [];
   game = newGame();
   view = new WorldView();
   mode = to;
   front.classList.toggle('hidden', mode !== 'title');
+  expose();
+}
+
+/** On from the report card. Caught or not, the run moves on (design). */
+function nextNight() {
+  if (night >= NIGHTS.length) {
+    mode = 'final';
+    return;
+  }
+  night++;
+  game = newGame('store');
+  view = new WorldView();
+  mode = 'play';
   expose();
 }
 
@@ -127,7 +145,7 @@ function frame(now: number) {
   time += dt;
   const input = controls.read();
 
-  // Title: Start Game / Tutorial. Pause: Resume / Quit to title (no restart). Card: Title (no retry).
+  // Title: Start Game / Tutorial. Pause: Resume / Quit to title (no restart). Card: next night or title (no retry).
   for (const m of controls.menu()) {
     sound.unlock();
     const confirm = m === 'Space' || m === 'Enter' || m === 'PadA';
@@ -136,7 +154,9 @@ function frame(now: number) {
     else if (mode === 'title' && ready && (confirm || m === 'PadStart')) start();
     else if (mode === 'title' && ready && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'PadUp', 'PadDown', 'PadLeft', 'PadRight'].includes(m)) pick(1 - menuChoice);
     else if (mode === 'card' && (m === 'KeyL' || m === 'PadSelect')) cardPage = 1 - cardPage;
-    else if (mode === 'card' && (confirm || m === 'PadStart')) restart('title');
+    else if ((mode === 'card' || mode === 'final') && (m === 'Escape' || m === 'PadStart')) restart('title');
+    else if (mode === 'card' && confirm) nextNight();
+    else if (mode === 'final' && confirm) restart('play');
     else if (mode === 'play' && (m === 'Escape' || m === 'KeyP' || m === 'PadStart')) {
       mode = 'paused';
       pauseChoice = 0;
@@ -163,12 +183,14 @@ function frame(now: number) {
         }
         mode = 'card';
         cardPage = 0;
+        const r = game.result;
+        run.push({ night: r.night, score: r.score, grade: r.grade, escaped: r.escaped });
         logNight();
         break;
       }
     }
   } else acc = 0;
-  sound.update(mode === 'title' ? null : game, mode, dt);
+  sound.update(mode === 'title' ? null : game, mode === 'final' ? 'card' : mode, dt);
 
   ctx.save();
   ctx.fillStyle = '#120d14';
@@ -183,6 +205,7 @@ function frame(now: number) {
   drawHud(ctx, game, time, keys());
   if (mode === 'paused') drawPause(ctx, pauseChoice, controls.usingPad);
   if (mode === 'card') drawCard(ctx, game, time, controls.usingPad, cardPage);
+  if (mode === 'final') drawFinal(ctx, run, time, controls.usingPad);
   if (mode === 'title') {
     const input = controls.usingPad ? 'pad' : 'keys';
     if (front.dataset.input !== input) front.dataset.input = input;

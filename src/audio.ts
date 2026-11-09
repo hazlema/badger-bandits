@@ -174,6 +174,7 @@ export class Sound {
       e.type === 'smash' || e.type === 'ring' ? e.x
       : ['door', 'shout', 'mutter', 'lost', 'bobWindup', 'bobThrow'].includes(e.type) || (e.type === 'say' && e.who === 'bob') ? g?.bob.x ?? null
       : e.type === 'beep' || e.type === 'slurp' || e.type === 'siren' ? g?.scrub.x ?? null
+      : e.type === 'hiss' ? g?.possum?.x ?? null
       : null;
     this.at(x, g);
     this.oneShot(e);
@@ -359,6 +360,27 @@ export class Sound {
         break;
       case 'bluePaws':
         [1320, 1760, 2217].forEach((f, i) => this.tone(f, 0.3, 'sine', 0.08, 1, i * 0.08));
+        break;
+      case 'pop':
+        // The cork, then the spray hissing out behind you.
+        this.tone(900, 0.07, 'square', 0.3, 0.4);
+        this.noise(0.6, 0.28, 2200);
+        for (let i = 0; i < 8; i++) this.tone(1500 + Math.random() * 1800, 0.06, 'sine', 0.04, 1.2, 0.05 + i * 0.05);
+        break;
+      case 'mash':
+        this.tone(700 + Math.random() * 500, 0.05, 'square', 0.09, 0.8);
+        break;
+      case 'till':
+        // Ka-ching, and a shower of coins.
+        [1568, 2093].forEach((f, i) => this.tone(f, 0.5, 'triangle', 0.16, 1, i * 0.1));
+        for (let i = 0; i < 14; i++) this.tone(2400 + Math.random() * 2400, 0.08, 'sine', 0.05, 1, 0.15 + i * 0.05);
+        break;
+      case 'hiss':
+        this.noise(0.4, 0.14, 3500);
+        break;
+      case 'clank':
+        this.tone(1250, 0.12, 'square', 0.08, 0.7);
+        this.tone(640, 0.16, 'triangle', 0.1, 0.8, 0.02);
         break;
     }
   }

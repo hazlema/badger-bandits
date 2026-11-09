@@ -1,11 +1,11 @@
-// Night 1 simulation. Fixed 60 Hz step, seeded randomness, no DOM: the render
+// The night simulation. Fixed 60 Hz step, seeded randomness, no DOM: the render
 // and audio layers read state and the per-step `events` list.
 
 import {
-  BOB, BOB_THROW, BUZZ, DT, FALL, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, PRINTS, RACCOON, RACK, RING, SCRUBBER, SIREN,
-  POST_GRACE, SEA_LEGS, THROW, TUTORIAL,
+  BELT, BOB, BOB_THROW, BUZZ, DT, FALL, FIZZ, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, NIGHTS, POSSUM, PRINTS, RACCOON, RACK, RING, SCRUBBER, SIREN,
+  POST_GRACE, SEA_LEGS, THROW, TILL, TUTORIAL,
 } from '../config';
-import { crawlLevel, isSpecial, roofLevel, storeLevel, type ItemKind, type Level, type Rect } from './level';
+import { crawlLevel, isSpecial, nightLevel, roofLevel, type ItemKind, type Level, type Rect } from './level';
 import { LESSONS, trainingLevel, type LessonId } from './training';
 import { rng } from './rng';
 
@@ -18,7 +18,7 @@ export const NO_INPUT: Input = {
 };
 
 export type Phase = 'roof' | 'crawl' | 'store' | 'over';
-export type Who = 'cousin' | 'bob' | 'raccoon' | 'scrubber';
+export type Who = 'cousin' | 'bob' | 'raccoon' | 'scrubber' | 'possum';
 export type EndReason = 'climbed' | 'bob' | 'dawn' | 'sore';
 
 export type SimEvent =
@@ -32,7 +32,7 @@ export type SimEvent =
         | 'jump' | 'land' | 'grab' | 'sip' | 'hiccupWarn' | 'hiccup' | 'slip' | 'hit' | 'vent' | 'wires'
         | 'door' | 'shout' | 'mutter' | 'lost' | 'beep' | 'slurp' | 'spin' | 'golden' | 'tote'
         | 'playDead' | 'escaped' | 'throw' | 'roll' | 'bonk' | 'hoot' | 'swap' | 'seaLegs' | 'bluePaws' | 'ko' | 'knock'
-        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson';
+        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson' | 'pop' | 'mash' | 'till' | 'hiss' | 'clank';
     };
 
 export interface Raccoon {
@@ -66,6 +66,8 @@ export interface Raccoon {
   blueT: number; // s left of leaving blue paw prints
   printDist: number;
   peakY: number; // highest point since you last stood or climbed, to measure a fall
+  fizz: number; // 0 to 1: how shaken up the champagne in your paws is
+  rocketT: number; // s left of being carried by a popped cork
 }
 
 /**
@@ -74,10 +76,10 @@ export interface Raccoon {
  */
 export interface Bottle {
   id: number; x: number; y: number; kind: ItemKind; board: number;
-  state: 'shelf' | 'air' | 'rolling' | 'gone';
+  state: 'shelf' | 'air' | 'rolling' | 'belt' | 'gone';
   vx: number; vy: number;
   safeT: number; // can't hit the raccoon yet (it just launched this one)
-  owner?: 'bob'; // Bob threw it, so it can't hit Bob
+  owner?: 'bob' | 'possum'; // who threw it; it can't hit them
   lane?: { x1: number; x2: number; y: number; board: number }; // what a rolling bottle rolls on
   spot?: number; // which of the level's shelf spots it came from
 }
@@ -115,7 +117,18 @@ export interface Scrubber {
   peekCd: number; // s of patrol before its next periscope stop
 }
 
+export interface Possum {
+  x: number;
+  y: number; // feet, on top of its case stack
+  dir: 1 | -1;
+  windT: number; // s left of holding a can up; 0 when it isn't
+  cd: number; // s until it can throw again
+  woozy: number; // s left of being soaked and throwing wide
+}
+
 export interface Result {
+  night: number;
+  coins: number; // from the till, counted in bonus; 0 if you were caught
   escaped: boolean;
   reason: EndReason;
   specials: number; // turned in
@@ -135,6 +148,7 @@ type AirHit =
   | { what: 'raccoon' }
   | { what: 'bob' }
   | { what: 'scrubber' }
+  | { what: 'possum' }
   | { what: 'display'; y: number }
   | { what: 'solid'; y: number };
 
@@ -157,7 +171,9 @@ const ENDINGS: Record<string, string> = { bob: "Bob's catch pole", dawn: 'still 
 const THROW_LINES = ['Get down from there!', 'Come down here, you!', 'Take THAT, trash panda!'];
 const SCOLDS = ['Chrr! Wasted!', 'Nooo, the good stuff!', 'Chrr… what a waste.'];
 const NAGS = ["Pssst! Don't smash ALL the merchandise!", 'Pssst. Those go in the bag, not on the floor.', "Psst! We can't sell puddles, cuz!"];
-const BIG: ItemKind[] = ['regular', 'golden', 'rum', 'curacao'];
+const BIG: ItemKind[] = ['regular', 'golden', 'rum', 'curacao', 'champagne'];
+const POSSUM_LINES = ['Hsss! My patch!', 'Hsss! Beat it, stripes!', 'HSSSS!'];
+const WOOZY_LINES = ['hsss… *hic*', 'wheee… canss…', '…mine. all mine. hsss.'];
 
 export class Game {
   phase: Phase;
@@ -183,6 +199,11 @@ export class Game {
   powerOut = false;
   toteTaken = false;
   rack = { stock: RACK.stock, spin: 0 };
+  readonly night: number;
+  possum: Possum | null = null;
+  till = { mashes: 0, open: false, sprayT: 0 };
+  coins = 0; // in your fur: bonus points if you climb out, lost if you're caught
+  private popArm: number | null = null; // s Grab has been held since a press that could pop the cork
   plushGlow = 0;
   plushPuff = 0;
   shake = 0;
@@ -190,7 +211,7 @@ export class Game {
   private prev: Input = NO_INPUT;
   private nextId = 1;
   private alarmAt: number | null = null; // where the siren went off before Bob came in, so he heads there
-  private sayCd: Record<Who, number> = { cousin: 0, bob: 0, raccoon: 0, scrubber: 0 };
+  private sayCd: Record<Who, number> = { cousin: 0, bob: 0, raccoon: 0, scrubber: 0, possum: 0 };
   private dawnWarned = false;
   private smashRun = 0; // bottles smashed since the last hand-up
   readonly tutorial: boolean;
@@ -198,14 +219,15 @@ export class Game {
   private restockT: number[] = []; // per shelf spot, s it has stood empty in the practice store
 
   /** Start Game is 'store'. The tutorial runs roof, crawlspace, practice store; 'training' skips to the practice store. */
-  constructor(opts: { seed?: number; start?: 'tutorial' | 'training' | 'store' } = {}) {
+  constructor(opts: { seed?: number; start?: 'tutorial' | 'training' | 'store'; night?: number } = {}) {
     this.tutorial = opts.start !== 'store';
+    this.night = opts.night ?? 1;
     this.rand = rng(opts.seed ?? 1);
     this.raccoon = {
       x: 0, y: 0, vx: 0, vy: 0, w: RACCOON.w, h: RACCOON.h, facing: 1, grounded: false, ground: null,
       climbing: false, dropBoard: -1, state: 'move', stateT: 0, hiddenOk: false, health: RACCOON.health,
       buzz: 0, buzzT: 0, hiccupT: 0, hiccups: 0, cheeks: false, carry: [], ready: 0, cap: RACCOON.carry, invuln: 0,
-      gripT: 0, aimT: null, seaLegs: 0, blueT: 0, printDist: 0, peakY: 0,
+      gripT: 0, aimT: null, seaLegs: 0, blueT: 0, printDist: 0, peakY: 0, fizz: 0, rocketT: 0,
     };
     this.bob = {
       state: 'outside', x: 0, dir: -1, goal: 0, t: 0, sweepT: 0, beam: 0, lostT: 0, target: 0, mutterCd: 0,
@@ -228,6 +250,14 @@ export class Game {
 
   get mult(): number {
     return multFor(this.raccoon.buzz);
+  }
+  /** Seconds from the tile crash to dawn, tonight. */
+  get nightLength(): number {
+    return NIGHTS[this.night - 1].length;
+  }
+  /** When Bob is due in, tonight. */
+  get bobDue(): number {
+    return this.nightLength * NIGHT.bobAt;
   }
   get capacity(): number {
     return this.raccoon.cap;
@@ -306,13 +336,14 @@ export class Game {
       else {
         this.updateScrubber(dt);
         this.updateBob(dt);
+        this.updatePossum(dt);
       }
       if (this.over) return;
-      if (!this.dawnWarned && this.t >= NIGHT.length - 30) {
+      if (!this.dawnWarned && this.t >= this.nightLength - 30) {
         this.dawnWarned = true;
         this.say('cousin', "Sky's getting light! Get up here!", 3.5);
       }
-      if (this.t >= NIGHT.length) {
+      if (this.t >= this.nightLength) {
         this.end(false, 'dawn');
         return;
       }
@@ -326,6 +357,7 @@ export class Game {
     for (const k of Object.keys(this.sayCd) as Who[]) this.sayCd[k] -= dt;
     this.plushGlow = Math.max(0, this.plushGlow - dt);
     this.plushPuff = Math.max(0, this.plushPuff - dt);
+    this.till.sprayT = Math.max(0, this.till.sprayT - dt);
     this.shake = Math.max(0, this.shake - dt * 3);
   }
 
@@ -338,7 +370,9 @@ export class Game {
     R.gripT = Math.max(0, R.gripT - dt);
     R.seaLegs = Math.max(0, R.seaLegs - dt);
     R.blueT = Math.max(0, R.blueT - dt);
+    R.rocketT = Math.max(0, R.rocketT - dt);
     this.updateBuzz(dt);
+    this.updateFizz(dt);
 
     if (R.state === 'sip' || R.state === 'spin' || R.state === 'hoot' || R.state === 'ko') {
       R.stateT -= dt;
@@ -376,6 +410,14 @@ export class Game {
 
     // Interactions first, so Grab/Throw/Up/Down act on what you're standing at.
     if (free && edge.grab) this.grab();
+    // A tap pops the cork when the press did nothing else. Holding Grab is for scooping, so it never does.
+    if (this.popArm !== null) {
+      if (input.grab) this.popArm += dt;
+      else {
+        if (free && this.popArm <= FIZZ.tap) this.popCork();
+        this.popArm = null;
+      }
+    }
     if (free && edge.throw) this.startThrow(edge);
     if (free && edge.swap) this.swap();
     if (free && edge.hoot) this.hoot();
@@ -415,10 +457,12 @@ export class Game {
         this.say('raccoon', 'Whoops—', 1.2);
       }
     } else {
-      const target = dir * speed;
-      const a = (dir !== 0 ? RACCOON.accel : RACCOON.decel) * control * (R.grounded ? 1 : RACCOON.airControl);
-      if (R.vx < target) R.vx = Math.min(target, R.vx + a * dt);
-      else if (R.vx > target) R.vx = Math.max(target, R.vx - a * dt);
+      if (R.rocketT <= 0) {
+        const target = dir * speed;
+        const a = (dir !== 0 ? RACCOON.accel : RACCOON.decel) * control * (R.grounded ? 1 : RACCOON.airControl);
+        if (R.vx < target) R.vx = Math.min(target, R.vx + a * dt);
+        else if (R.vx > target) R.vx = Math.max(target, R.vx - a * dt);
+      }
       R.vy = Math.min(RACCOON.maxFall, R.vy + RACCOON.gravity * dt);
       if (free && edge.jump && R.grounded) {
         R.vy = -RACCOON.jumpSpeed;
@@ -433,6 +477,7 @@ export class Game {
     const x0 = R.x;
     this.integrate(dt);
     if (L.id === 'store') {
+      if (L.belt && this.onBelt()) R.x += BELT.speed * dt;
       this.bumpBottles(input.grab);
       this.pawPrints(Math.abs(R.x - x0));
     }
@@ -583,6 +628,7 @@ export class Game {
     if (this.phase !== 'store') return;
     R.health = Math.max(0, R.health - FALL.damage);
     this.note(`Fell off a high shelf: knocked out, −${FALL.damage}% health`);
+    R.rocketT = 0;
     R.state = 'ko';
     R.stateT = FALL.koTime;
     R.aimT = null;
@@ -607,7 +653,7 @@ export class Game {
     const h = this.level.hole;
     if (!h || !R.grounded || typeof R.ground !== 'number') return false;
     const b = this.level.boards[R.ground];
-    return b.unit === 0 && b.y === h.y + h.h && R.x >= h.x && R.x <= h.x + h.w;
+    return b.y === h.y + h.h && R.x >= h.x && R.x <= h.x + h.w;
   }
 
   onPlush(): boolean {
@@ -688,6 +734,8 @@ export class Game {
       this.say('cousin', specials ? 'Chrrr! Jackpot!' : 'Got it! Go get more!', 2);
       return;
     }
+    if (this.atBelt() && R.carry.length) return this.loadBelt();
+    if (this.atTill()) return this.mashTill();
     if (L.rack && this.rack.stock > 0 && L.counter && this.onFloorLevel(L.counter.y) && this.near(L.rack, R.x, 26)) {
       if (R.carry.length >= R.cap) return this.say('raccoon', 'Paws full.', 1.2);
       R.state = 'spin';
@@ -727,11 +775,15 @@ export class Game {
     if (b) {
       if (R.carry.length >= R.cap) return this.say('raccoon', 'Paws full.', 1.2);
       this.take(b);
+      return;
     }
+    if (R.carry.includes('champagne')) this.popArm = 0;
   }
 
   private take(b: Bottle) {
     const R = this.raccoon;
+    this.popArm = null; // a scoop, not a cork
+    if (b.kind === 'champagne' && !R.carry.includes('champagne')) this.say('raccoon', 'Ooh, bubbly. Better not shake it…', 2);
     b.state = 'gone';
     R.carry.push(b.kind);
     R.ready = R.carry.length - 1;
@@ -940,7 +992,7 @@ export class Game {
     const dir = Math.sign(R.vx);
     for (const b of this.bottles) {
       if (b.state !== 'shelf') continue;
-      const tall = b.kind === 'regular' || b.kind === 'rum' || b.kind === 'curacao';
+      const tall = b.kind === 'regular' || b.kind === 'rum' || b.kind === 'curacao' || b.kind === 'champagne';
       const bw = tall ? 7 : 5;
       const bh = tall ? 26 : 16;
       if (R.x + R.w / 2 < b.x - bw || R.x - R.w / 2 > b.x + bw) continue;
@@ -964,6 +1016,7 @@ export class Game {
     for (const b of this.bottles) {
       if (b.state === 'air') this.fly(b, dt);
       else if (b.state === 'rolling') this.rollOn(b, dt);
+      else if (b.state === 'belt') this.ride(b, dt);
       if (this.over) return;
     }
     this.bottles = this.bottles.filter((b) => b.state !== 'gone');
@@ -983,7 +1036,11 @@ export class Game {
     switch (hit.what) {
       case 'raccoon':
         this.smash(b, this.surfaceBelow(b.x, b.y), 0);
-        this.hit(b.vx >= 0 ? 1 : -1, b.owner === 'bob' ? "Bob's bottle" : 'a falling bottle');
+        this.hit(b.vx >= 0 ? 1 : -1, b.owner === 'bob' ? "Bob's bottle" : b.owner === 'possum' ? "the possum's can" : 'a falling bottle');
+        break;
+      case 'possum':
+        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.soakPossum();
         break;
       case 'bob':
         this.smash(b, this.surfaceBelow(b.x, b.y), 0);
@@ -1005,7 +1062,7 @@ export class Game {
   }
 
   /** What an airborne bottle moving from y0 to y1 at x runs into, if anything. */
-  private airHit(x: number, y0: number, y1: number, safeT: number, owner?: 'bob'): AirHit | null {
+  private airHit(x: number, y0: number, y1: number, safeT: number, owner?: Bottle['owner']): AirHit | null {
     const L = this.level;
     const R = this.raccoon;
     const inside = (rx: number, ry: number, rw: number, rh: number) => x >= rx && x <= rx + rw && y1 - 8 >= ry && y1 - 8 <= ry + rh;
@@ -1017,7 +1074,9 @@ export class Game {
       if (S.state !== 'down' && inside(S.x - SCRUBBER.w / 2, L.floorY - SCRUBBER.h, SCRUBBER.w, SCRUBBER.h)) return { what: 'scrubber' };
       // Its camera head up on the pole: drop a bottle on it from the board above.
       if (S.state !== 'down' && S.eye > SCRUBBER.h && inside(S.x - 12, L.floorY - S.eye - 10, 24, 20)) return { what: 'scrubber' };
-      for (const d of [L.plush, L.rack]) if (d && inside(d.x, d.y, d.w, d.h)) return { what: 'display', y: y1 };
+      const P = this.possum;
+      if (P && owner !== 'possum' && inside(P.x - 18, P.y - 28, 36, 28)) return { what: 'possum' };
+      if (owner !== 'possum') for (const d of [L.plush, L.rack]) if (d && inside(d.x, d.y, d.w, d.h)) return { what: 'display', y: y1 };
     }
     for (const s of this.solids()) {
       if (x >= s.x && x <= s.x + s.w && y0 <= s.y && y1 >= s.y) return { what: 'solid', y: s.y };
@@ -1082,6 +1141,12 @@ export class Game {
     b.state = 'gone';
     b.board = -1;
     b.y = y;
+    if (b.kind === 'can') {
+      // A can just clanks: no glass, no puddle, not much noise.
+      this.emit({ type: 'clank' });
+      if (ring !== 0) this.ring(b.x, y, RING.small);
+      return;
+    }
     if (isSpecial(b.kind)) {
       this.specialsBroken++;
       this.note('A special smashed: no 100% tonight');
@@ -1303,6 +1368,7 @@ export class Game {
     if (R.buzz > 0) this.setBuzz(R.buzz - 1);
     R.state = 'move';
     R.aimT = null;
+    R.rocketT = 0;
     R.hiddenOk = false;
     R.climbing = false;
     R.vx = dir * HIT.knockX;
@@ -1324,7 +1390,7 @@ export class Game {
     B.mutterCd = Math.max(0, B.mutterCd - dt);
 
     if (B.state === 'outside') {
-      if (this.t < NIGHT.length * NIGHT.bobAt && this.alarmAt === null) return;
+      if (this.t < this.bobDue && this.alarmAt === null) return;
       B.state = 'search';
       B.x = this.level.door!.x + this.level.door!.w / 2;
       B.dir = -1;
@@ -1339,8 +1405,10 @@ export class Game {
         this.say('bob', 'Alarm! Animal control, coming through!', 2.6);
       } else this.say('bob', 'Animal control! Anybody in here?', 2.6);
       // Night 1 teaches play dead on his first entrance.
-      this.say('cousin', 'Chrr-chrr! Animal control! Dive in the plush and play dead (↓)!', 6);
-      this.plushGlow = 14;
+      if (this.night === 1) {
+        this.say('cousin', 'Chrr-chrr! Animal control! Dive in the plush and play dead (↓)!', 6);
+        this.plushGlow = 14;
+      } else this.say('cousin', 'Chrr-chrr! Bob again!', 2.4);
       return;
     }
 
@@ -1581,6 +1649,150 @@ export class Game {
     return this.lineOfSight(this.beamOrigin(), { x: R.x, y: R.y - R.h / 2 });
   }
 
+  /* ------------------------------------------------------------ checkout */
+
+  private onCounter(): boolean {
+    const k = this.level.counter;
+    return !!k && this.onFloorLevel(k.y) && this.raccoon.x >= k.x && this.raccoon.x <= k.x + k.w;
+  }
+
+  /** Standing on the moving part of the belt. */
+  onBelt(): boolean {
+    const b = this.level.belt;
+    return !!b && this.onCounter() && this.raccoon.x >= b.x1 && this.raccoon.x <= b.x2;
+  }
+
+  /** Close enough to the belt to load it. The prompts use this too. */
+  atBelt(): boolean {
+    const b = this.level.belt;
+    return !!b && this.onCounter() && this.raccoon.x >= b.x1 - 10 && this.raccoon.x <= b.x2 - 10;
+  }
+
+  atTill(): boolean {
+    const r = this.level.register;
+    return !!r && !this.till.open && this.onCounter() && this.near(r, this.raccoon.x, 26);
+  }
+
+  /** Your ready bottle goes on the belt, as far along as it can without touching another. */
+  private loadBelt() {
+    const R = this.raccoon;
+    const belt = this.level.belt!;
+    const riding = this.bottles.filter((b) => b.state === 'belt');
+    let x = Math.max(belt.x1 + 6, Math.min(belt.x2 - 40, R.x));
+    while (x >= belt.x1 && riding.some((b) => Math.abs(b.x - x) < BELT.gap)) x -= BELT.gap;
+    if (x < belt.x1) return this.say('raccoon', 'Belt is full.', 1.2);
+    this.fixReady();
+    const kind = R.carry.splice(R.ready, 1)[0];
+    this.fixReady();
+    this.bottles.push({ id: this.nextId++, x, y: belt.y, kind, board: -1, state: 'belt', vx: 0, vy: 0, safeT: 0 });
+    this.emit({ type: 'knock' });
+  }
+
+  /** Off the end of the belt it smashes, loud enough to bring anyone within earshot to the till. */
+  private ride(b: Bottle, dt: number) {
+    const belt = this.level.belt!;
+    b.x += BELT.speed * dt;
+    if (b.x >= belt.x2) this.smash(b, belt.y, BELT.ring);
+  }
+
+  /** Each slap is a small noise. The last springs the drawer: coins in your fur, and a ka-ching you can hear down the aisle. */
+  private mashTill() {
+    const T = this.till;
+    const r = this.level.register!;
+    T.mashes++;
+    this.emit({ type: 'mash' });
+    this.ring(r.x + r.w / 2, r.y, RING.small);
+    if (T.mashes < TILL.mashes) return;
+    T.open = true;
+    T.sprayT = TILL.sprayTime;
+    this.coins += TILL.coins;
+    this.emit({ type: 'till' });
+    this.ring(r.x + r.w / 2, r.y, RING.big);
+    this.note(`Sprung the till: ${TILL.coins} coins in your fur`);
+    this.say('raccoon', 'Shiny! Shiny shiny shiny!', 2);
+  }
+
+  /* ----------------------------------------------------------- champagne */
+
+  /** Running with bubbly shakes it up; standing still lets it settle. */
+  private updateFizz(dt: number) {
+    const R = this.raccoon;
+    if (!R.carry.includes('champagne')) R.fizz = 0;
+    else if (Math.abs(R.vx) > RACCOON.bumpSpeed) R.fizz = Math.min(1, R.fizz + dt / FIZZ.full);
+    else R.fizz = Math.max(0, R.fizz - dt / FIZZ.settle);
+  }
+
+  /** The bottle is used up, the spray rockets you the way you're facing, and it leaves a puddle and a bang behind. */
+  private popCork() {
+    const R = this.raccoon;
+    if (!R.carry.includes('champagne')) return;
+    const at = R.carry[R.ready] === 'champagne' ? R.ready : R.carry.indexOf('champagne');
+    R.carry.splice(at, 1);
+    this.fixReady();
+    if (R.grounded) this.spills.push({ id: this.nextId++, x: R.x, y: R.y, kind: 'champagne', x0: R.x, flow: 0 });
+    this.ring(R.x, R.y - R.h / 2, RING.big);
+    R.vx = R.facing * (FIZZ.minSpeed + (FIZZ.maxSpeed - FIZZ.minSpeed) * R.fizz);
+    R.vy = -FIZZ.lift;
+    R.grounded = false;
+    R.ground = null;
+    R.climbing = false;
+    R.rocketT = FIZZ.time;
+    R.fizz = 0;
+    this.emit({ type: 'pop' });
+    this.note('Popped a champagne cork');
+    this.say('raccoon', 'WAAAHOOO!', 1.2);
+  }
+
+  /* -------------------------------------------------------------- possum */
+
+  /** Get near its patch and it lobs cans at you. It can't be chased off, only soaked into throwing wide. */
+  private updatePossum(dt: number) {
+    const P = this.possum;
+    if (!P) return;
+    const R = this.raccoon;
+    P.woozy = Math.max(0, P.woozy - dt);
+    P.cd = Math.max(0, P.cd - dt);
+    P.dir = R.x >= P.x ? 1 : -1;
+    if (P.windT > 0) {
+      P.windT -= dt;
+      if (P.windT <= 0) this.possumThrow();
+      return;
+    }
+    if (P.cd > 0 || (R.state === 'playdead' && R.hiddenOk)) return;
+    if (Math.hypot(R.x - P.x, R.y - P.y) > POSSUM.range) return;
+    P.windT = POSSUM.windup;
+    this.emit({ type: 'hiss' });
+    const lines = P.woozy > 0 ? WOOZY_LINES : POSSUM_LINES;
+    this.say('possum', lines[Math.floor(this.rand() * lines.length)], 1.4);
+  }
+
+  /** At where you are now, so moving after the wind-up dodges it. A woozy throw goes up in a big loop and lands wide. */
+  private possumThrow() {
+    const P = this.possum!;
+    const R = this.raccoon;
+    const hx = P.x + P.dir * 12;
+    const hy = P.y - 30;
+    const woozy = P.woozy > 0;
+    const dx = R.x - hx + (woozy ? (this.rand() - 0.5) * POSSUM.wideBy : 0);
+    const dy = R.y - R.h / 2 - hy;
+    const T = woozy ? POSSUM.loopyFlight : Math.max(POSSUM.minFlight, Math.min(POSSUM.maxFlight, Math.abs(dx) / POSSUM.speed));
+    const vy = (dy - 0.5 * RACCOON.gravity * T * T) / T;
+    this.bottles.push({ id: this.nextId++, x: hx, y: hy, kind: 'can', board: -1, state: 'air', vx: dx / T, vy, safeT: 0, owner: 'possum' });
+    P.cd = POSSUM.every;
+    this.emit({ type: 'throw' });
+  }
+
+  private soakPossum() {
+    const P = this.possum!;
+    if (P.woozy <= 0) this.note('Soaked the possum');
+    P.woozy = POSSUM.woozy;
+    P.windT = 0;
+    P.cd = POSSUM.every; // it licks its fur before it goes back to throwing
+    this.emit({ type: 'bonk' });
+    this.say('cousin', 'Chrr! Soaked the possum!', 2);
+    this.say('possum', 'pfff— hsss… *lick*', 1.8);
+  }
+
   /* -------------------------------------------------------------- flow */
 
   private place(x: number, y: number) {
@@ -1595,11 +1807,13 @@ export class Game {
   }
 
   private enterStore() {
-    this.level = this.tutorial ? trainingLevel() : storeLevel(1);
+    this.level = this.tutorial ? trainingLevel() : nightLevel(this.night);
+    const pp = this.level.possum;
+    this.possum = pp ? { x: (pp.x1 + pp.x2) / 2, y: pp.y, dir: 1, windT: 0, cd: 1, woozy: 0 } : null;
     this.phase = 'store';
     this.t = 0;
     this.bottles = this.level.bottles.map((b, spot) => ({ ...b, spot, id: this.nextId++, state: 'shelf', vx: 0, vy: 0, safeT: 0 }));
-    this.scrub.x = this.tutorial ? -9999 : 1300; // off the map in the practice store, so bottles can't hit it
+    this.scrub.x = this.tutorial ? -9999 : this.level.scrubberStart!; // off the map in the practice store, so bottles can't hit it
     this.scrub.dir = -1;
     this.place(this.level.start.x, this.level.ceilingY + this.raccoon.h + 2);
     this.raccoon.vy = 200;
@@ -1608,7 +1822,7 @@ export class Game {
     this.specialsTotal = this.level.bottles.filter((b) => isSpecial(b.kind)).length;
     this.ring(this.raccoon.x, this.level.ceilingY, RING.small);
     this.shake = 0.7;
-    this.say('cousin', this.tutorial ? 'Chrr! Practice first. Follow the sign up top!' : 'Chrr! Pass the good stuff up to me here!', 3.5);
+    this.say('cousin', this.tutorial ? 'Chrr! Practice first. Follow the sign up top!' : this.night === 1 ? 'Chrr! Pass the good stuff up to me here!' : "Chrr! I'm in the middle tonight. Good stuff both ways!", 3.5);
   }
 
   end(escaped: boolean, reason: EndReason) {
@@ -1622,16 +1836,20 @@ export class Game {
         this.turnIn();
         this.note(`Climbed out with ${R.carry.length} in your paws`);
       }
+      this.bonus += this.coins;
       this.note('Climbed out');
     } else {
       this.note(`Caught: ${ENDINGS[reason] ?? reason}`);
       if (R.carry.length) this.note(`Lost: ${R.carry.length} in your paws`);
+      if (this.coins) this.note(`Lost: ${this.coins} coins from your fur`);
     }
     const percent = percentFor(this.specials, this.specialsTotal);
     const bonus = this.bonus * this.mult;
     this.note(`Specials turned in: ${this.specials} of ${this.specialsTotal}`, percent);
     this.note(`Bonus: ${this.bonus} at ×${this.mult} Buzz`, bonus);
     this.result = {
+      night: this.night,
+      coins: escaped ? this.coins : 0,
       escaped,
       reason,
       specials: this.specials,

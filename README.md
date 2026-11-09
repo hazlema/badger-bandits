@@ -1,9 +1,10 @@
-# Badger Bandits: night 1
+# Badger Bandits
 
 A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
 the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
 
-This is a vertical slice: night 1 only, from the roof to the report card.
+Nights 1 and 2 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
+run ends on a total of all your nights.
 
 ## Running it
 
@@ -14,8 +15,8 @@ npm install
 npm run dev       # then open http://localhost:5173
 ```
 
-Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, or `?training` to skip
-to the tutorial's practice store.
+Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2` to start
+on a later night, or `?training` to skip to the tutorial's practice store.
 `npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
 
 ## How to play
@@ -24,7 +25,7 @@ to the tutorial's practice store.
 
 Get in, grab bottles, and **hand them up to your cousin at the ceiling hole**. Handing up is the only way loot
 is safe. Then **climb out through the hole** before the night ends. The clock in the top right counts down to
-dawn (about 5 minutes). Get caught, or still be inside at dawn, and you lose everything you hadn't handed up.
+dawn (about 5 minutes on night 1, 6 on night 2). Get caught, or still be inside at dawn, and you lose everything you hadn't handed up.
 
 ### Start Game or Tutorial
 
@@ -104,6 +105,21 @@ slots (Q picks which).
 - **The counter:** spin the mini-bottle rack for minis (sometimes a golden one), and take the tote bag to carry 8
   instead of 5.
 - The cousin will tell you off if you smash too much without handing anything up.
+
+### Night 2
+
+The hole is in the middle of a bigger store, with shelves both ways and a long checkout lane at the front.
+
+- **The possum** sits on the case stack at the back and lobs cans (5% and a dropped bottle) when you get near. Watch
+  for the raised can and move. It can't be chased off, but a bottle soaks it, and for 9 seconds its throws go wide
+  in big loops. A can that lands on Bob or the scrubber knocks them over.
+- **Champagne** (dark green, gold foil) is a bonus bottle you can also ride. Run with it and it fizzes up; **tap E**
+  with nothing in front of you to pop the cork and rocket forward, further the more it's shaken. It costs the
+  bottle, makes a bang and leaves a puddle. Holding E to scoop never pops it.
+- **The checkout belt:** stand on the counter and press E to put your ready bottle on the belt. It creeps along
+  and smashes off the end, loud enough to bring anyone nearby to the till while you work elsewhere.
+- **The till:** slap it 6 times with E until the drawer springs. The 12 coins take no carry slot and count as
+  bonus points if you climb out; get caught and they're gone. Each slap makes noise, and the drawer makes more.
 
 ### Testing notes
 
