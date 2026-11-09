@@ -15,8 +15,11 @@ export interface Board { x1: number; x2: number; y: number; unit: number }
 /** A shelf unit: climbable from the floor to `top`; its end panels block Bob's beam. */
 export interface Unit { x: number; w: number; top: number }
 export interface BottleDef { x: number; y: number; kind: ItemKind; board: number }
-export interface Sign { x: number; y: number; text: string }
-/** A chalkboard on the store wall in the tutorial. x is its centre, y its top. */
+/** A wooden sign, on a post down to the ground, or chained to the ceiling if `hang` is set. */
+export interface Sign { x: number; y: number; text: string; hang?: boolean }
+/** Scenery standing on the floor against the wall. Nothing collides with it. */
+export interface Prop { kind: 'cases' | 'crate' | 'barrel' | 'dolly' | 'mop' | 'wetfloor' | 'plant'; x: number }
+/** A chalkboard hung in the tutorial's store. x is its centre, y its top. */
 export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
 export interface Level {
@@ -31,6 +34,7 @@ export interface Level {
   bottles: BottleDef[];
   signs: Sign[];
   posters?: Poster[];
+  props?: Prop[];
   start: { x: number; y: number };
   // Named spots. Only the ones a level uses are set.
   vent?: Rect;
@@ -64,7 +68,7 @@ export function roofLevel(): Level {
     bottles: [],
     signs: [
       { x: 150, y: 330, text: '← → run   ·   Space / A jump' },
-      { x: 520, y: 300, text: 'Hold ↑ against the trellis to climb' },
+      { x: 505, y: 300, text: 'Hold ↑ against the trellis to climb' },
       { x: 1080, y: 170, text: 'E / X pries up the roof vent' },
     ],
     start: { x: 80, y: 440 },
@@ -87,8 +91,8 @@ export function crawlLevel(): Level {
     units: [],
     bottles: [],
     signs: [
-      { x: 380, y: 210, text: 'E / X chews through the security wires' },
-      { x: 860, y: 210, text: 'That tile looks loose…' },
+      { x: 380, y: 274, text: 'E / X chews through the security wires', hang: true },
+      { x: 800, y: 274, text: 'That tile looks loose…', hang: true },
     ],
     start: { x: 60, y: 320 },
     wires: { x: 560, y: 250, w: 18, h: 70 },
@@ -148,6 +152,17 @@ export function storeLevel(seed = 1): Level {
     units,
     bottles,
     signs: [],
+    // Scenery in the gaps between shelf units.
+    props: [
+      { kind: 'barrel', x: 350 },
+      { kind: 'plant', x: 735 },
+      { kind: 'dolly', x: 1125 },
+      { kind: 'cases', x: 1500 },
+      { kind: 'mop', x: 1735 },
+      { kind: 'wetfloor', x: 1790 },
+      { kind: 'crate', x: 2155 },
+      { kind: 'plant', x: 2498 },
+    ],
     start: { x: 170, y: 130 },
     hole: { x: 130, y: 60, w: 90, h: 70 },
     plush,

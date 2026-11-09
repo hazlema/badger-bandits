@@ -81,6 +81,20 @@ export function trainingLevel(): Level {
     units,
     bottles,
     signs: [],
+    props: [
+      { kind: 'cases', x: 355 },
+      { kind: 'barrel', x: 465 },
+      { kind: 'crate', x: 550 },
+      { kind: 'plant', x: 628 },
+      { kind: 'dolly', x: 965 },
+      { kind: 'mop', x: 1070 },
+      { kind: 'wetfloor', x: 1150 },
+      { kind: 'cases', x: 1790 },
+      { kind: 'crate', x: 1890 },
+      { kind: 'barrel', x: 1975 },
+      { kind: 'plant', x: 2060 },
+      { kind: 'crate', x: 2425 },
+    ],
     posters: [
       {
         x: 480, y: 140, w: 330, title: 'The Job',

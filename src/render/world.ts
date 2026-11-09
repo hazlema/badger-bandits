@@ -4,6 +4,7 @@ import { BOB, BOB_THROW, NIGHT, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD
 import type { Game, Raccoon } from '../sim/game';
 import { isSpecial, type ItemKind, type Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
+import { acUnit, building, chalkboard, crawlAttic, crawlBelow, crawlTunnel, floorProp, propHalfWidth, roofBackdrop, roofDressing, roofVent, trellis, wainscot, woodSign } from './scenery';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
 
@@ -77,109 +78,28 @@ export class WorldView {
   private roof(c: Ctx, g: Game, time: number) {
     const L = g.level;
     const x0 = this.camX;
-    const sky = c.createLinearGradient(0, 0, 0, 540);
-    sky.addColorStop(0, '#141a33');
-    sky.addColorStop(1, '#3a3157');
-    c.fillStyle = sky;
-    c.fillRect(x0 - 20, 0, WORLD_VIEW_W + 40, 540);
-    for (let i = 0; i < 90; i++) {
-      const sx = x0 * 0.9 + hash(i) * 1700 - 100;
-      const tw = 0.5 + 0.5 * Math.sin(time * 2 + i);
-      ellipse(c, sx, hash(i + 99) * 260, 1.2, 1.2, withAlpha(C.cream, 0.3 + 0.5 * tw));
-    }
-    glow(c, x0 * 0.8 + 760, 90, 90, '#fff3c4', 0.25);
-    ellipse(c, x0 * 0.8 + 760, 90, 30, 30, '#fbf1cf');
-    // Ashland at night: houses and the church steeple, in parallax.
-    c.fillStyle = '#2a2440';
-    for (let i = 0; i < 14; i++) {
-      const hx = x0 * 0.6 + i * 130 - 120;
-      const hh = 70 + hash(i * 7) * 60;
-      c.fillRect(hx, 440 - hh, 110, hh);
-      c.beginPath();
-      c.moveTo(hx - 6, 440 - hh);
-      c.lineTo(hx + 55, 440 - hh - 36);
-      c.lineTo(hx + 116, 440 - hh);
-      c.fill();
-      if (hash(i * 3) > 0.4) fillRR(c, hx + 30, 440 - hh + 22, 16, 18, 2, withAlpha(C.warm, 0.6));
-    }
-    const st = x0 * 0.6 + 640;
-    c.fillRect(st, 190, 30, 250);
-    c.beginPath();
-    c.moveTo(st - 4, 190);
-    c.lineTo(st + 15, 120);
-    c.lineTo(st + 34, 190);
-    c.fill();
-
-    // Roofs
-    for (const s of L.solids) {
-      if (s.w < 100) continue;
-      fillRR(c, s.x, s.y, s.w, s.h, 0, '#3a3340');
-      c.fillStyle = '#4d4555';
-      c.fillRect(s.x, s.y, s.w, 6);
-    }
-    // AC unit
-    const ac = L.solids[2];
-    fillRR(c, ac.x, ac.y, ac.w, ac.h, 5, '#9aa1a8', C.ink, 2);
-    for (let i = 0; i < 5; i++) {
-      c.fillStyle = '#6f777f';
-      c.fillRect(ac.x + 10, ac.y + 10 + i * 8, ac.w - 20, 3);
-    }
-    // Trellis with ivy
-    const t = L.climbables[0];
-    c.strokeStyle = '#8c6a46';
-    c.lineWidth = 3;
-    for (let i = 0; i <= 3; i++) {
-      c.beginPath();
-      c.moveTo(t.x + (i * t.w) / 3, t.y);
-      c.lineTo(t.x + (i * t.w) / 3, t.y + t.h);
-      c.stroke();
-    }
-    for (let y = t.y; y < t.y + t.h; y += 22) {
-      c.beginPath();
-      c.moveTo(t.x, y);
-      c.lineTo(t.x + t.w, y + 11);
-      c.stroke();
-    }
-    for (let i = 0; i < 26; i++) ellipse(c, t.x + hash(i) * t.w, t.y + hash(i + 5) * t.h, 7, 4, i % 2 ? '#4f7d45' : '#3c6838', hash(i + 2) * 3);
-    fillRR(c, t.x - 4, t.y - 4, t.w + 8, 8, 3, '#8c6a46');
-    // Vent
-    const v = L.vent!;
-    fillRR(c, v.x, v.y, v.w, v.h, 4, '#a7adb4', C.ink, 2);
-    for (let i = 0; i < 4; i++) {
-      c.fillStyle = '#5f666d';
-      c.fillRect(v.x + 8 + i * 15, v.y + 5, 9, v.h - 10);
-    }
-    this.signs(c, L);
-  }
-
-  private signs(c: Ctx, L: Level) {
-    for (const s of L.signs) {
-      c.font = `600 15px "Fredoka", sans-serif`;
-      const w = c.measureText(s.text).width + 26;
-      c.fillStyle = '#5a3b26';
-      c.fillRect(s.x - 3, s.y + 16, 6, 40);
-      fillRR(c, s.x - w / 2, s.y - 16, w, 34, 8, '#2f3a33', '#8c6a46', 4);
-      text(c, s.text, s.x, s.y + 1, 15, C.cream, 'center');
-    }
+    roofBackdrop(c, x0, WORLD_VIEW_W, time);
+    for (const s of L.solids) if (s.w >= 100) building(c, s, x0 - 20, x0 + WORLD_VIEW_W + 20);
+    roofDressing(c, time);
+    acUnit(c, L.solids[2], time);
+    trellis(c, L.climbables[0]);
+    roofVent(c, L.vent!);
+    for (const s of L.signs) woodSign(c, s, L);
   }
 
   /* ------------------------------------------------------------ crawl */
 
   private crawl(c: Ctx, g: Game, time: number) {
     const L = g.level;
-    c.fillStyle = '#1a1314';
-    c.fillRect(this.camX - 20, 0, WORLD_VIEW_W + 40, 540);
-    fillRR(c, 0, L.ceilingY, L.width, L.floorY - L.ceilingY, 0, '#3b2c26');
-    for (let x = 0; x < L.width; x += 80) {
-      c.fillStyle = '#4a3830';
-      c.fillRect(x, L.ceilingY, 10, L.floorY - L.ceilingY);
-    }
-    c.fillStyle = '#5a463a';
-    c.fillRect(0, L.floorY, L.width, 8);
-    c.fillStyle = '#2b201c';
-    c.fillRect(0, L.ceilingY - 8, L.width, 8);
-    // Wires
     const w = L.wires!;
+    crawlBelow(c, L, L.tile!, g.powerOut, time);
+    crawlAttic(c, L);
+    crawlTunnel(c, L, w, time);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    glow(c, g.raccoon.x, g.raccoon.y - 14, 110, C.cream, 0.07);
+    c.restore();
+    // Wires
     const cols = ['#d8463a', '#e7c240', '#4a8fd8'];
     cols.forEach((col, i) => {
       c.strokeStyle = col;
@@ -211,7 +131,7 @@ export class WorldView {
     c.moveTo(t.x + 30, t.y + 4);
     c.lineTo(t.x + 64, t.y + 2);
     c.stroke();
-    this.signs(c, L);
+    for (const s of L.signs) woodSign(c, s, L);
   }
 
   /* ------------------------------------------------------------ store */
@@ -284,6 +204,8 @@ export class WorldView {
       fillRR(c, d.x + d.w - 16, d.y + 46, 6, 14, 2, C.gold);
     }
 
+    if (L.props) wainscot(c, x0, x1, L.floorY);
+
     // Floor + rug
     c.fillStyle = '#6a4127';
     c.fillRect(x0, L.floorY, x1 - x0, 40);
@@ -295,11 +217,12 @@ export class WorldView {
     c.fillStyle = withAlpha('#e2b56a', 0.5);
     c.fillRect(910, L.floorY + 9, 500, 3);
 
-    // Tutorial chalkboards
+    // Tutorial chalkboards and whatever's stacked along the wall
     for (const p of L.posters ?? []) {
-      fillRR(c, p.x - p.w / 2, p.y, p.w, 46 + p.lines.length * 24, 8, '#2f3a33', '#8c6a46', 5);
-      text(c, p.title, p.x, p.y + 25, 21, C.gold, 'center', 700);
-      p.lines.forEach((s, i) => text(c, withKeys(s, keys), p.x, p.y + 54 + i * 24, 15, C.cream, 'center', 500));
+      if (p.x + p.w / 2 > x0 && p.x - p.w / 2 < x1) chalkboard(c, p, L.ceilingY, (s) => withKeys(s, keys));
+    }
+    for (const p of L.props ?? []) {
+      if (p.x + propHalfWidth(p) > x0 && p.x - propHalfWidth(p) < x1) floorProp(c, p, L.floorY, time);
     }
 
     // Shelf units
