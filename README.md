@@ -54,6 +54,7 @@ The menu offers both. **Start Game** drops you straight into the store. **Tutori
 | Climb out (at the hole) | ↑ or W | Up |
 | Play dead (on the plush display) | ↓ or S | Down |
 | Pause, mute everything, music on/off | Esc, M, N | Start |
+| Show your powerups (pauses the game) | P | Select |
 
 **Throwing:** press and hold **F**, then pick. Let go with nothing else and it's a **lob**: while you hold, a
 dotted arc swings between short and long, so let go when it's where you want it. Still holding F, press **↓** to
@@ -106,13 +107,32 @@ slots (Q picks which).
   instead of 5.
 - The cousin will tell you off if you smash too much without handing anything up.
 
+### Powerups
+
+Each night has one powerup on the rack by the counter, and you keep what you pick up for the rest of the run, whether you
+climb out or get caught. Press **P** (Select on a pad) to see them all. Starting a new run clears them.
+
 ### Night 2
 
 The hole is in the middle of a bigger store, with shelves both ways and a long checkout lane at the front.
 
+- **Sneakers** hang on the rack where night 1 had the tote. They only work while someone is onto you: Bob shouting or
+  chasing, the siren going, or the tank aiming at you. You run and climb 20% of your sober speed faster, so they help
+  most when you're drunk. Red sneakers show on your feet while they work, and fade with the boost over 2.5 s once
+  you're safe. Numbers are in `SNEAKERS` in `src/config.ts`.
+- **The tank** replaces the scrubber: the store panicked after night 1. It patrols, follows paw prints, races to
+  crashes and flattens spills like the scrubber did, and its periscope spots you the same way. When it does, the siren
+  goes off and it stops to shoot. The turret follows you for most of a second behind a dotted red line. The line goes
+  solid when the barrel locks, so move then. Shells fly straight and stop at the first thing they meet, shelf posts
+  and boards included. A blast costs 5% and a dropped bottle like any hit, and destroys every bottle around it, specials
+  too. It also flattens Bob, takes out the possum and its stack, and makes the biggest noise short of the hoot and
+  siren. Playing dead dodges it. A bottle on the tank stops it for 4 s. It reloads for 5 s. Numbers are in `TANK` in
+  `src/config.ts`.
+- **The colour:** each night can have its own wash and lamp colour in `NIGHTS`. Night 2 is cold blue; bottles and
+  characters are drawn over the wash so they stand out.
 - **The possum** sits on the case stack at the back and lobs cans (5% and a dropped bottle) when you get near. Watch
   for the raised can and move. It can't be chased off, but a bottle soaks it, and for 9 seconds its throws go wide
-  in big loops. A can that lands on Bob or the scrubber knocks them over.
+  in big loops. A can that lands on Bob or the tank knocks them over.
 - **Champagne** (dark green, gold foil) is a bonus bottle you can also ride. Run with it and it fizzes up; **tap E**
   with nothing in front of you to pop the cork and rocket forward, further the more it's shaken. It costs the
   bottle, makes a bang and leaves a puddle. Holding E to scoop never pops it.
@@ -238,5 +258,4 @@ Smaller calls:
 - "High up, a climb can slip" is read as Buzz step 4+.
 - Mini-bottle rack: 8 bottles, 10% golden, can be spun until empty. The tote is free and can be taken once.
 - The scrubber only bumps you while it's rushing to a crash, as written. On patrol it rolls past.
-- With one night built, the report card's only button is Title (no Next night yet), and the title has no Quit,
-  since it's a browser tab. The coins counter is there but stays at 0: nothing on night 1 gives coins.
+- The title has no Quit, since it's a browser tab. The coins counter stays at 0 on night 1: only night 2's till gives coins.

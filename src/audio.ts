@@ -171,9 +171,9 @@ export class Sound {
   play(e: SimEvent, g: Game | null = null) {
     if (!this.ctx) return;
     const x =
-      e.type === 'smash' || e.type === 'ring' ? e.x
+      e.type === 'smash' || e.type === 'ring' || e.type === 'blast' ? e.x
       : ['door', 'shout', 'mutter', 'lost', 'bobWindup', 'bobThrow'].includes(e.type) || (e.type === 'say' && e.who === 'bob') ? g?.bob.x ?? null
-      : e.type === 'beep' || e.type === 'slurp' || e.type === 'siren' ? g?.scrub.x ?? null
+      : e.type === 'beep' || e.type === 'slurp' || e.type === 'siren' || e.type === 'aim' || e.type === 'shot' ? g?.scrub.x ?? null
       : e.type === 'hiss' ? g?.possum?.x ?? null
       : null;
     this.at(x, g);
@@ -382,6 +382,24 @@ export class Sound {
         this.tone(1250, 0.12, 'square', 0.08, 0.7);
         this.tone(640, 0.16, 'triangle', 0.1, 0.8, 0.02);
         break;
+      case 'sneakers':
+        // Laces yanked tight, and off you go.
+        [880, 1320].forEach((f, i) => this.tone(f, 0.09, 'triangle', 0.12, 1.3, i * 0.06));
+        break;
+      case 'aim':
+        // The turret grinding round, then a rising whine as it charges.
+        this.tone(95, 0.75, 'sawtooth', 0.09, 1.25);
+        this.tone(420, 0.95, 'square', 0.05, 3.2, 0.05, 0.3);
+        break;
+      case 'shot':
+        this.noise(0.22, 0.4, 0, 0, 1400);
+        this.tone(150, 0.3, 'triangle', 0.45, 0.35);
+        break;
+      case 'blast':
+        this.noise(0.9, 0.7, 0, 0, 800);
+        this.tone(70, 0.7, 'triangle', 0.6, 0.4);
+        this.noise(0.5, 0.2, 2000, 0.05);
+        break;
     }
   }
 
@@ -458,7 +476,7 @@ export class Sound {
         set(this.scrub.g.gain, v);
         // A servo whine while its camera pole cranks up.
         const cranking = S.state === 'peek' && S.eye < SCRUBBER.eyeTop;
-        set(this.scrub.o.frequency, cranking ? 150 : S.state === 'rush' ? 82 : S.state === 'slurp' ? 66 : 52);
+        set(this.scrub.o.frequency, (cranking ? 150 : S.state === 'rush' ? 82 : S.state === 'slurp' ? 66 : 52) * (S.tank ? 0.6 : 1));
         set(this.scrub.p.pan, pan(S.x));
       }
       // Rolling bottles rumble along; running spills trickle.

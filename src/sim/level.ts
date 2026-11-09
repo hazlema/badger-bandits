@@ -22,6 +22,9 @@ export interface Prop { kind: 'cases' | 'crate' | 'barrel' | 'dolly' | 'mop' | '
 /** A chalkboard hung in the tutorial's store. x is its centre, y its top. */
 export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
+/** Powerups stay with you from night to night. */
+export type Powerup = 'tote' | 'sneakers';
+
 export interface Level {
   id: 'roof' | 'crawl' | 'store';
   width: number;
@@ -42,7 +45,7 @@ export interface Level {
   tile?: Rect;
   hole?: Rect; // standing zone on the back shelf's top board
   plush?: Rect;
-  tote?: Rect;
+  powerup?: Rect & { kind: Powerup }; // tonight's, on the rack near the counter
   rack?: Rect;
   counter?: Rect;
   door?: Rect;
@@ -188,7 +191,7 @@ function checkoutLevel(): Level {
     start: { x: 1415, y: 130 },
     hole: { x: 1370, y: 60, w: 90, h: 70 },
     plush,
-    tote: { x: 2590, y: 440, w: 34, h: 40 },
+    powerup: { kind: 'sneakers', x: 2590, y: 440, w: 34, h: 40 },
     rack: { x: 3240, y: 362, w: 44, h: 58 },
     counter,
     belt: { x1: 2810, x2: 3200, y: counter.y },
@@ -250,7 +253,7 @@ export function storeLevel(seed = 1): Level {
     start: { x: 170, y: 130 },
     hole: { x: 130, y: 60, w: 90, h: 70 },
     plush,
-    tote: { x: 2530, y: 440, w: 34, h: 40 },
+    powerup: { kind: 'tote', x: 2530, y: 440, w: 34, h: 40 },
     rack: { x: 2650, y: 362, w: 44, h: 58 },
     counter,
     door: { x: 2900, y: 400, w: 70, h: 100 },

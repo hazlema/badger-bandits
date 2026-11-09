@@ -120,7 +120,7 @@ export function trainingLevel(): Level {
     start: { x: 170, y: 130 },
     hole: { x: 130, y: 60, w: 90, h: 70 },
     plush,
-    tote: { x: 2530, y: 440, w: 34, h: 40 },
+    powerup: { kind: 'tote', x: 2530, y: 440, w: 34, h: 40 },
     rack: { x: 2650, y: 362, w: 44, h: 58 },
     counter,
     door: { x: 2900, y: 400, w: 70, h: 100 },

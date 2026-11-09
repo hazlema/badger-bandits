@@ -28,6 +28,9 @@ export const RACCOON = {
   health: 100, // (design)
 };
 
+// Night 2's powerup (host, 2026-11-09): only works while you're spotted. Boost is a share of sober run speed, so it helps most when you're drunk. Guesses.
+export const SNEAKERS = { boost: 0.2, fade: 2.5 }; // fade: s to wear off once you're out of danger
+
 export const BUZZ = {
   steps: 5, // (design) sober x1, each step +0.5, top x3.5
   perStep: 0.5,
@@ -144,12 +147,29 @@ export const SCRUBBER = {
   camPeriod: 2.4, // s per pan
 };
 
+// Night 2's security (host, 2026-11-09): the store panicked and bought a tank. It does the scrubber's jobs and shoots. All guesses.
+export const TANK = {
+  w: 112,
+  h: 60,
+  eyeBase: 62, // the periscope, tucked down at the top of the turret
+  pivot: 48, // px above the floor the barrel swings from
+  barrel: 58,
+  aim: 1, // s from spotting you to the shot
+  lock: 0.3, // the barrel stops following you this long before it fires, so you can dodge
+  swing: 3.2, // rad/s the barrel turns
+  pitchMin: -0.3, // rad, how far down and up it can point
+  pitchMax: 1.45,
+  reload: 5, // s between shots
+  shellSpeed: 640, // px/s
+  blast: 58, // px radius
+};
+
 export const RACK = { stock: 8, goldenChance: 0.1, spinTime: 1.1 }; // (guess)
 
 // What changes from night to night. Each night runs a minute longer (design); the counts are guesses.
 export const NIGHTS = [
-  { length: NIGHT.length, specials: SPECIALS, champagne: 0 },
-  { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5 },
+  { length: NIGHT.length, specials: SPECIALS, champagne: 0, tank: false, wash: null, lamp: '#ff6a4a', bulb: '#ff7a5a' },
+  { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5, tank: true, wash: '#6288f2', lamp: '#3f8cff', bulb: '#a8d4ff' },
 ] as const;
 
 // Champagne (design): run with it and it fizzes up, tap Grab to pop the cork and get rocketed. All guesses.

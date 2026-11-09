@@ -128,7 +128,7 @@ describe('the practice store', () => {
     tap(g, 'jump');
     settle(g);
 
-    const t = g.level.tote!;
+    const t = g.level.powerup!;
     g.raccoon.x = t.x + t.w / 2;
     g.raccoon.y = g.level.floorY;
     settle(g);

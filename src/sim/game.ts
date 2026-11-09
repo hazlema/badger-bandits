@@ -2,10 +2,10 @@
 // and audio layers read state and the per-step `events` list.
 
 import {
-  BELT, BOB, BOB_THROW, BUZZ, DT, FALL, FIZZ, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, NIGHTS, POSSUM, PRINTS, RACCOON, RACK, RING, SCRUBBER, SIREN,
+  BELT, BOB, BOB_THROW, BUZZ, DT, FALL, FIZZ, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, NIGHTS, POSSUM, PRINTS, RACCOON, RACK, RING, SCRUBBER, SIREN, SNEAKERS, TANK,
   POST_GRACE, SEA_LEGS, THROW, TILL, TUTORIAL,
 } from '../config';
-import { crawlLevel, isSpecial, nightLevel, roofLevel, type ItemKind, type Level, type Rect } from './level';
+import { type Powerup, crawlLevel, isSpecial, nightLevel, roofLevel, type ItemKind, type Level, type Rect } from './level';
 import { LESSONS, trainingLevel, type LessonId } from './training';
 import { rng } from './rng';
 
@@ -24,6 +24,7 @@ export type EndReason = 'climbed' | 'bob' | 'dawn' | 'sore';
 export type SimEvent =
   | { type: 'smash'; x: number; y: number; kind: ItemKind | 'tile' }
   | { type: 'ring'; x: number; y: number; r: number }
+  | { type: 'blast'; x: number }
   | { type: 'say'; who: Who; text: string }
   | { type: 'bank' }
   | { type: 'caught'; reason: EndReason }
@@ -32,7 +33,7 @@ export type SimEvent =
         | 'jump' | 'land' | 'grab' | 'sip' | 'hiccupWarn' | 'hiccup' | 'slip' | 'hit' | 'vent' | 'wires'
         | 'door' | 'shout' | 'mutter' | 'lost' | 'beep' | 'slurp' | 'spin' | 'golden' | 'tote'
         | 'playDead' | 'escaped' | 'throw' | 'roll' | 'bonk' | 'hoot' | 'swap' | 'seaLegs' | 'bluePaws' | 'ko' | 'knock'
-        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson' | 'pop' | 'mash' | 'till' | 'hiss' | 'clank';
+        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson' | 'pop' | 'mash' | 'till' | 'hiss' | 'clank' | 'aim' | 'shot' | 'sneakers';
     };
 
 export interface Raccoon {
@@ -68,6 +69,7 @@ export interface Raccoon {
   peakY: number; // highest point since you last stood or climbed, to measure a fall
   fizz: number; // 0 to 1: how shaken up the champagne in your paws is
   rocketT: number; // s left of being carried by a popped cork
+  sprint: number; // 0 to 1: how much of the sneakers' boost is on
 }
 
 /**
@@ -115,7 +117,17 @@ export interface Scrubber {
   cam: number; // camera angle above level, rad
   panT: number;
   peekCd: number; // s of patrol before its next periscope stop
+  tank: boolean; // night 2 on: same job, bigger, and it shoots
+  aimT: number; // s left until it fires; 0 when it isn't aiming
+  reload: number; // s until it can aim again
+  aim: number; // barrel angle above level, rad
+  gun: 1 | -1; // the way the barrel points
+  kick: number; // s left of recoil, for the art
 }
+
+export interface Shell { x: number; y: number; vx: number; vy: number; spent: boolean }
+/** Where a shell went off. Kept for the night: the fireball fades, the scorch mark stays. */
+export interface Blast { x: number; y: number; age: number }
 
 export interface Possum {
   x: number;
@@ -191,13 +203,15 @@ export class Game {
   events: SimEvent[] = [];
   bob: Bob;
   scrub: Scrubber;
+  shells: Shell[] = [];
+  blasts: Blast[] = [];
   specials = 0; // turned in so far
   specialsBroken = 0;
   specialsTotal = 0; // counted from the store when you drop in; all of them is 100% (host)
   bonus = 0; // other bottles turned in, a point each
   wiresChewed = false;
   powerOut = false;
-  toteTaken = false;
+  powerups: Powerup[]; // kept from night to night
   rack = { stock: RACK.stock, spin: 0 };
   readonly night: number;
   possum: Possum | null = null;
@@ -219,7 +233,7 @@ export class Game {
   private restockT: number[] = []; // per shelf spot, s it has stood empty in the practice store
 
   /** Start Game is 'store'. The tutorial runs roof, crawlspace, practice store; 'training' skips to the practice store. */
-  constructor(opts: { seed?: number; start?: 'tutorial' | 'training' | 'store'; night?: number } = {}) {
+  constructor(opts: { seed?: number; start?: 'tutorial' | 'training' | 'store'; night?: number; powerups?: Powerup[] } = {}) {
     this.tutorial = opts.start !== 'store';
     this.night = opts.night ?? 1;
     this.rand = rng(opts.seed ?? 1);
@@ -227,8 +241,10 @@ export class Game {
       x: 0, y: 0, vx: 0, vy: 0, w: RACCOON.w, h: RACCOON.h, facing: 1, grounded: false, ground: null,
       climbing: false, dropBoard: -1, state: 'move', stateT: 0, hiddenOk: false, health: RACCOON.health,
       buzz: 0, buzzT: 0, hiccupT: 0, hiccups: 0, cheeks: false, carry: [], ready: 0, cap: RACCOON.carry, invuln: 0,
-      gripT: 0, aimT: null, seaLegs: 0, blueT: 0, printDist: 0, peakY: 0, fizz: 0, rocketT: 0,
+      gripT: 0, aimT: null, seaLegs: 0, blueT: 0, printDist: 0, peakY: 0, fizz: 0, rocketT: 0, sprint: 0,
     };
+    this.powerups = [...(opts.powerups ?? [])];
+    if (this.has('tote')) this.raccoon.cap += RACCOON.toteExtra;
     this.bob = {
       state: 'outside', x: 0, dir: -1, goal: 0, t: 0, sweepT: 0, beam: 0, lostT: 0, target: 0, mutterCd: 0,
       wasChasing: false, holding: null, windT: 0, throwCd: 0,
@@ -236,7 +252,9 @@ export class Game {
     this.scrub = {
       x: 0, dir: 1, state: 'patrol', target: 0, t: 0, beepT: 4, spill: 0, alarmCd: 0,
       eye: SCRUBBER.eyeBase, cam: SCRUBBER.camTilt, panT: 0, peekCd: SCRUBBER.peekEvery[0],
+      tank: NIGHTS[this.night - 1].tank, aimT: 0, reload: 0, aim: 0, gun: 1, kick: 0,
     };
+    if (this.scrub.tank) this.scrub.eye = TANK.eyeBase;
     this.phase = 'roof';
     this.level = roofLevel();
     if (opts.start === 'store' || opts.start === 'training') {
@@ -258,6 +276,14 @@ export class Game {
   /** When Bob is due in, tonight. */
   get bobDue(): number {
     return this.nightLength * NIGHT.bobAt;
+  }
+  has(p: Powerup): boolean {
+    return this.powerups.includes(p);
+  }
+  /** Someone is onto you right now: Bob shouting or chasing, the siren going, or the tank's gun on you. */
+  get inDanger(): boolean {
+    const S = this.scrub;
+    return this.bob.state === 'chase' || this.bob.state === 'shout' || S.state === 'alarm' || S.aimT > 0;
   }
   get capacity(): number {
     return this.raccoon.cap;
@@ -335,6 +361,7 @@ export class Game {
       if (this.tutorial) this.practice(dt);
       else {
         this.updateScrubber(dt);
+        this.updateShells(dt);
         this.updateBob(dt);
         this.updatePossum(dt);
       }
@@ -349,6 +376,7 @@ export class Game {
       }
     }
     for (const r of this.rings) r.age += dt;
+    for (const b of this.blasts) b.age += dt;
     this.rings = this.rings.filter((r) => r.age < 0.9);
     for (const p of this.prints) p.age += dt;
     this.prints = this.prints.filter((p) => p.age < PRINTS.life);
@@ -402,7 +430,14 @@ export class Game {
 
     const step = R.buzz;
     const wob = this.wobble;
-    const speed = RACCOON.runSpeed * (1 - BUZZ.speedLoss * step);
+    if (this.has('sneakers')) {
+      if (this.inDanger && R.sprint < 1) {
+        if (R.sprint === 0) this.emit({ type: 'sneakers' });
+        R.sprint = 1;
+      } else if (!this.inDanger) R.sprint = Math.max(0, R.sprint - dt / SNEAKERS.fade);
+    }
+    const boost = SNEAKERS.boost * R.sprint;
+    const speed = RACCOON.runSpeed * (1 - BUZZ.speedLoss * step + boost);
     const control = Math.max(0.2, 1 - BUZZ.controlLoss * wob);
     const free = R.state === 'move' && R.aimT === null;
     const dir = free ? (input.right ? 1 : 0) - (input.left ? 1 : 0) : 0;
@@ -446,7 +481,7 @@ export class Game {
     } else R.climbing = false;
 
     if (R.climbing && climb) {
-      R.vy = input.up ? -RACCOON.climbSpeed * (1 - 0.06 * step) : RACCOON.climbSpeed * 1.3;
+      R.vy = input.up ? -RACCOON.climbSpeed * (1 - 0.06 * step + boost) : RACCOON.climbSpeed * 1.3;
       R.vx = dir * speed * 0.45;
       R.grounded = false;
       if (input.up && wob >= BUZZ.slipFrom && this.rand() < BUZZ.slipPerSec * dt) {
@@ -744,12 +779,15 @@ export class Game {
       this.emit({ type: 'spin' });
       return;
     }
-    if (L.tote && !this.toteTaken && this.onFloorLevel(L.floorY) && this.near(L.tote, R.x, 22)) {
-      this.toteTaken = true;
-      R.cap += RACCOON.toteExtra;
+    const prize = L.powerup;
+    if (prize && !this.has(prize.kind) && this.onFloorLevel(L.floorY) && this.near(prize, R.x, 22)) {
+      this.powerups.push(prize.kind);
       this.emit({ type: 'tote' });
-      this.learn('tote');
-      this.say('raccoon', 'Tote bag! Room for three more.', 2.2);
+      if (prize.kind === 'tote') {
+        R.cap += RACCOON.toteExtra;
+        this.learn('tote');
+        this.say('raccoon', 'Tote bag! Room for three more.', 2.2);
+      } else this.say('raccoon', 'Sneakers! For when things get hairy.', 2.2);
       return;
     }
     const spill = this.spills
@@ -1071,9 +1109,10 @@ export class Game {
       const B = this.bob;
       if (owner !== 'bob' && this.bobInside && B.state !== 'down' && inside(B.x - BOB.w / 2, L.floorY - BOB.h, BOB.w, BOB.h)) return { what: 'bob' };
       const S = this.scrub;
-      if (S.state !== 'down' && inside(S.x - SCRUBBER.w / 2, L.floorY - SCRUBBER.h, SCRUBBER.w, SCRUBBER.h)) return { what: 'scrubber' };
+      const box = this.scrubBox;
+      if (S.state !== 'down' && inside(S.x - box.w / 2, L.floorY - box.h, box.w, box.h)) return { what: 'scrubber' };
       // Its camera head up on the pole: drop a bottle on it from the board above.
-      if (S.state !== 'down' && S.eye > SCRUBBER.h && inside(S.x - 12, L.floorY - S.eye - 10, 24, 20)) return { what: 'scrubber' };
+      if (S.state !== 'down' && S.eye > box.h && inside(S.x - 12, L.floorY - S.eye - 10, 24, 20)) return { what: 'scrubber' };
       const P = this.possum;
       if (P && owner !== 'possum' && inside(P.x - 18, P.y - 28, 36, 28)) return { what: 'possum' };
       if (owner !== 'possum') for (const d of [L.plush, L.rack]) if (d && inside(d.x, d.y, d.w, d.h)) return { what: 'display', y: y1 };
@@ -1124,7 +1163,7 @@ export class Game {
       }
     } else if (lane.y === L.floorY) {
       const S = this.scrub;
-      if (S.state !== 'down' && Math.abs(b.x - S.x) < SCRUBBER.w / 2) {
+      if (S.state !== 'down' && Math.abs(b.x - S.x) < this.scrubBox.w / 2) {
         this.knockScrubber();
         b.vx *= THROW.rollPinSlow;
       }
@@ -1214,7 +1253,8 @@ export class Game {
     const [a, b] = this.level.scrubberRoute!;
     const clamp = (x: number) => Math.max(a, Math.min(b, x));
     S.alarmCd = Math.max(0, S.alarmCd - dt);
-    const touching = Math.abs(R.y - floor) < 2 && Math.abs(R.x - S.x) < (SCRUBBER.w + R.w) / 2 - 4;
+    const touching = Math.abs(R.y - floor) < 2 && Math.abs(R.x - S.x) < (this.scrubBox.w + R.w) / 2 - 4;
+    if (S.tank) this.updateTurret(dt);
     if (S.state === 'down') {
       S.t -= dt;
       if (S.t <= 0) S.state = 'patrol';
@@ -1245,7 +1285,9 @@ export class Game {
       const print = this.prints
         .filter((p) => p.y === floor && p.x >= a && p.x <= b)
         .sort((p, q) => Math.abs(p.x - S.x) - Math.abs(q.x - S.x))[0];
-      if (print) {
+      if (S.aimT > 0) {
+        // Stopped to shoot.
+      } else if (print) {
         const d = print.x - S.x;
         S.dir = d >= 0 ? 1 : -1;
         S.x += S.dir * Math.min(Math.abs(d), SCRUBBER.patrolSpeed * 1.4 * dt);
@@ -1273,7 +1315,7 @@ export class Game {
       }
       // It bumps you off your feet if you're in its way on the floor, and tells on you.
       if (touching) {
-        this.hit(R.x >= S.x ? 1 : -1, 'the scrubber');
+        this.hit(R.x >= S.x ? 1 : -1, S.tank ? 'the tank' : 'the scrubber');
         if (S.alarmCd <= 0) return this.siren('bumped');
       }
     } else {
@@ -1283,14 +1325,146 @@ export class Game {
     }
 
     // The camera: up the pole while it peeks, tucked away otherwise (and at once if it's knocked over).
-    if (S.state === 'down') S.eye = SCRUBBER.eyeBase;
+    const eyeBase = S.tank ? TANK.eyeBase : SCRUBBER.eyeBase;
+    if (S.state === 'down') S.eye = eyeBase;
     else if (S.state === 'peek') S.eye = Math.min(SCRUBBER.eyeTop, S.eye + SCRUBBER.eyeUp * dt);
-    else S.eye = Math.max(SCRUBBER.eyeBase, S.eye - SCRUBBER.eyeDown * dt);
+    else S.eye = Math.max(eyeBase, S.eye - SCRUBBER.eyeDown * dt);
     S.panT += dt;
     const tilt = S.state === 'peek' ? 0 : SCRUBBER.camTilt;
     S.cam = tilt + SCRUBBER.camSweep * Math.sin((2 * Math.PI * S.panT) / SCRUBBER.camPeriod);
     // Patrolling or peeking, it snitches on anything its camera sees. Rushing or mopping, it's busy.
-    if ((S.state === 'patrol' || S.state === 'peek') && S.alarmCd <= 0 && this.camSees()) this.siren('spotted');
+    if ((S.state === 'patrol' || S.state === 'peek') && (S.tank || S.alarmCd <= 0) && this.camSees()) {
+      if (S.tank && S.aimT <= 0 && S.reload <= 0) {
+        S.aimT = TANK.aim;
+        this.emit({ type: 'aim' });
+      }
+      if (S.alarmCd <= 0) this.siren('spotted');
+    }
+  }
+
+  /* --------------------------------------------------------------- tank */
+
+  /** The size of whatever is patrolling tonight. */
+  get scrubBox() {
+    return this.scrub.tank ? TANK : SCRUBBER;
+  }
+
+  /** The turret follows you until just before it fires, so a shot can be dodged by moving at the last moment. */
+  private updateTurret(dt: number) {
+    const S = this.scrub;
+    const R = this.raccoon;
+    S.reload = Math.max(0, S.reload - dt);
+    S.kick = Math.max(0, S.kick - dt);
+    let want = 0;
+    let firing = false;
+    if (S.state === 'down') S.aimT = 0;
+    if (S.aimT > 0) {
+      S.aimT = Math.max(0, S.aimT - dt);
+      firing = S.aimT === 0;
+      want = S.aim;
+      if (S.aimT > TANK.lock) {
+        S.gun = R.x >= S.x ? 1 : -1;
+        const pitch = Math.atan2(this.level.floorY - TANK.pivot - (R.y - R.h / 2), Math.abs(R.x - S.x));
+        want = Math.max(TANK.pitchMin, Math.min(TANK.pitchMax, pitch));
+      }
+    } else if (S.state !== 'down') S.gun = S.dir;
+    const turn = TANK.swing * dt;
+    S.aim += Math.max(-turn, Math.min(turn, want - S.aim));
+    if (firing) this.fire();
+  }
+
+  private fire() {
+    const S = this.scrub;
+    const dx = S.gun * Math.cos(S.aim);
+    const dy = -Math.sin(S.aim);
+    this.shells.push({
+      x: S.x + dx * TANK.barrel,
+      y: this.level.floorY - TANK.pivot + dy * TANK.barrel,
+      vx: dx * TANK.shellSpeed,
+      vy: dy * TANK.shellSpeed,
+      spent: false,
+    });
+    S.reload = TANK.reload;
+    S.kick = 0.25;
+    this.shake = Math.max(this.shake, 0.5);
+    this.emit({ type: 'shot' });
+  }
+
+  private updateShells(dt: number) {
+    for (const s of this.shells) {
+      const x0 = s.x;
+      const y0 = s.y;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      if (!this.shellStops(x0, y0, s.x, s.y)) continue;
+      s.spent = true;
+      this.blast(s.x, Math.min(s.y, this.level.floorY));
+    }
+    this.shells = this.shells.filter((s) => !s.spent);
+  }
+
+  /** A shell flies dead straight and stops at the first thing in its way. Shelf posts and boards count, so shelves are cover. */
+  private shellStops(x0: number, y0: number, x: number, y: number): boolean {
+    const L = this.level;
+    const R = this.raccoon;
+    const B = this.bob;
+    const P = this.possum;
+    if (x <= 0 || x >= L.width || y <= L.ceilingY || y >= L.floorY) return true;
+    const inBox = (rx: number, ry: number, rw: number, rh: number) => x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+    if (R.state !== 'playdead' && inBox(R.x - R.w / 2, R.y - R.h, R.w, R.h)) return true;
+    if (this.bobInside && B.state !== 'down' && inBox(B.x - BOB.w / 2, L.floorY - BOB.h, BOB.w, BOB.h)) return true;
+    if (P && inBox(P.x - 18, P.y - 28, 36, 28)) return true;
+    if (L.possum && inBox(L.possum.x1, L.possum.y, L.possum.x2 - L.possum.x1, L.floorY - L.possum.y)) return true;
+    for (const d of [L.plush, L.rack]) if (d && inBox(d.x, d.y, d.w, d.h)) return true;
+    for (const s of this.solids()) if (inBox(s.x, s.y, s.w, s.h)) return true;
+    for (const u of L.units) {
+      if (y < u.top - 14) continue;
+      for (const post of [u.x, u.x + u.w]) if ((x0 - post) * (x - post) <= 0) return true;
+    }
+    for (const b of L.boards) if ((y0 - b.y) * (y - b.y) <= 0 && x >= b.x1 && x <= b.x2) return true;
+    return this.bottles.some((b) => b.state === 'shelf' && Math.abs(b.x - x) < 9 && y <= b.y && y >= b.y - 30);
+  }
+
+  /** Everything near a shell goes: bottles, and anyone standing there, Bob and the possum included. One big bang brings Bob running. */
+  private blast(x: number, y: number) {
+    const L = this.level;
+    const R = this.raccoon;
+    const B = this.bob;
+    const P = this.possum;
+    this.blasts.push({ x, y, age: 0 });
+    this.emit({ type: 'blast', x });
+    this.shake = Math.max(this.shake, 0.9);
+    const near = (px: number, py: number) => Math.hypot(px - x, py - y) <= TANK.blast;
+    // The tank broke these, so the cousin doesn't nag you about them.
+    const run = this.smashRun;
+    for (const b of this.bottles) {
+      if (b.state === 'gone' || !near(b.x, b.y - 14)) continue;
+      this.smashRun = 0;
+      this.smash(b, b.state === 'air' ? this.surfaceBelow(b.x, b.y) : b.y, 0);
+    }
+    this.smashRun = run;
+    if (R.state !== 'playdead' && near(R.x, R.y - R.h / 2)) this.hit(R.x >= x ? 1 : -1, 'a tank shell');
+    if (this.bobInside && B.state !== 'down' && near(B.x, L.floorY - BOB.h / 2)) {
+      this.knockBob();
+      this.sayCd.cousin = 0;
+      this.say('cousin', 'Chrr-chrr! The tank got Bob!', 2.2);
+    }
+    const st = L.possum;
+    if (P && st && (near(P.x, P.y - 14) || (x >= st.x1 - 4 && x <= st.x2 + 4 && y >= st.y - 4))) this.blowPossum();
+    this.ring(x, y, RING.biggest);
+  }
+
+  /** The cases go up, and the possum leaves for the night. */
+  private blowPossum() {
+    const L = this.level;
+    const st = L.possum!;
+    const top = L.boards.find((b) => b.unit < 0 && b.y === st.y && b.x1 <= st.x2 && b.x2 >= st.x1);
+    if (top) top.x2 = top.x1; // nothing left to stand on
+    L.possum = undefined;
+    this.possum = null;
+    this.note('The tank blew up the possum\'s stack');
+    this.sayCd.cousin = 0;
+    this.say('cousin', 'Chrr! No more possum!', 2.2);
   }
 
   camOrigin() {
@@ -1325,7 +1499,7 @@ export class Game {
     const gone = this.spills.filter((s) => Math.abs(s.y - floor) < 1 && Math.abs(s.x - x) < r);
     if (!gone.length) return;
     this.spills = this.spills.filter((s) => !gone.includes(s));
-    this.emit({ type: 'slurp' });
+    this.emit({ type: this.scrub.tank ? 'clank' : 'slurp' });
     this.say('cousin', SCOLDS[Math.floor(this.rand() * SCOLDS.length)], 1.8);
   }
 
@@ -1339,17 +1513,20 @@ export class Game {
     this.emit({ type: 'siren' });
     this.ring(S.x, floor - 13, RING.siren);
     if (this.bob.state === 'outside') this.alarmAt = S.x;
-    const what = how === 'bumped' ? 'You bumped the scrubber' : "The scrubber's camera spotted you";
+    const name = S.tank ? 'tank' : 'scrubber';
+    const what = how === 'bumped' ? `You bumped the ${name}` : `The ${name}'s camera spotted you`;
     this.note(this.bob.state === 'outside' ? `${what}: siren, and it called Bob in early` : `${what}: siren`);
-    this.say('cousin', how === 'bumped' ? 'Chrr! The roomba is snitching!' : 'Chrr! The roomba saw you! It is snitching!', 2.2);
+    if (S.tank) this.say('cousin', how === 'bumped' ? "Chrr! Don't poke the tank!" : 'Chrr! The tank saw you! MOVE!', 2.2);
+    else this.say('cousin', how === 'bumped' ? 'Chrr! The roomba is snitching!' : 'Chrr! The roomba saw you! It is snitching!', 2.2);
   }
 
   private knockScrubber() {
     const S = this.scrub;
     S.state = 'down';
     S.t = KNOCKDOWN.scrubber;
+    S.aimT = 0;
     this.emit({ type: 'bonk' });
-    this.say('cousin', 'Chrr-chrr! STRIKE!', 1.8);
+    this.say('cousin', S.tank ? 'Chrr-chrr! Right on the hatch!' : 'Chrr-chrr! STRIKE!', 1.8);
   }
 
   /* ---------------------------------------------------------------- hit */
@@ -1822,7 +1999,7 @@ export class Game {
     this.specialsTotal = this.level.bottles.filter((b) => isSpecial(b.kind)).length;
     this.ring(this.raccoon.x, this.level.ceilingY, RING.small);
     this.shake = 0.7;
-    this.say('cousin', this.tutorial ? 'Chrr! Practice first. Follow the sign up top!' : this.night === 1 ? 'Chrr! Pass the good stuff up to me here!' : "Chrr! I'm in the middle tonight. Good stuff both ways!", 3.5);
+    this.say('cousin', this.tutorial ? 'Chrr! Practice first. Follow the sign up top!' : this.night === 1 ? 'Chrr! Pass the good stuff up to me here!' : "Chrr! They bought a TANK! I'm up in the middle tonight!", 3.5);
   }
 
   end(escaped: boolean, reason: EndReason) {

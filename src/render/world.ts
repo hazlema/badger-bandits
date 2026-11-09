@@ -1,15 +1,17 @@
 // Draws the level and everyone in it, in world coordinates under a camera.
 
-import { BOB, BOB_THROW, NIGHT, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
+import { BOB, BOB_THROW, NIGHT, NIGHTS, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
 import type { Game, Raccoon } from '../sim/game';
 import { isSpecial, type ItemKind, type Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
 import { acUnit, building, chalkboard, crawlAttic, crawlBelow, crawlTunnel, floorProp, propHalfWidth, roofBackdrop, roofDressing, roofVent, trellis, wainscot, woodSign } from './scenery';
 import { caseStack, checkoutBelt, drawPossum, tillRegister } from './checkout';
+import { drawBlasts, drawScorches, drawShells, drawTank } from './tank';
+import { drawPowerup, POWERUP_INFO } from './powerups';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
 
-export interface Prompts { grab: string; up: string; down: string; jump: string; throw: string; swap: string; hoot: string }
+export interface Prompts { grab: string; up: string; down: string; jump: string; throw: string; swap: string; hoot: string; powers: string }
 
 /** Fill {grab}, {throw} and friends with the player's own keys. */
 export function withKeys(s: string, k: Prompts): string {
@@ -63,6 +65,7 @@ export class WorldView {
       this.aimArc(c, g, time);
       this.bob(c, g, time);
       this.lighting(c, g, time);
+      drawBlasts(c, g.blasts);
       for (const r of g.rings) {
         const k = r.age / 0.9;
         c.beginPath();
@@ -248,6 +251,7 @@ export class WorldView {
       fillRR(c, b.x1 - 2, b.y, b.x2 - b.x1 + 4, 10, 2, C.woodLight, C.woodDark, 2);
     }
     const lit = g.highlighted();
+    const shelfBottles = () => {
     for (const b of g.bottles) {
       if (b.state !== 'shelf' || b.x < x0 || b.x > x1) continue;
       if (b === lit) {
@@ -264,6 +268,9 @@ export class WorldView {
       drawBottle(c, b.x, b.y, b.kind, b.id, 0, { salute: b.kind === 'rum' && near ? Math.min(1, (time * 4) % 6) : 0, face: Math.sign(g.raccoon.x - b.x) });
       if (isSpecial(b.kind)) drawSmoke(c, b.x, b.y - 27, b.kind, b.id, time);
     }
+    };
+    const wash = NIGHTS[g.night - 1].wash;
+    if (!wash) shelfBottles();
     L.units.forEach((u) => {
       if (u.x > x1 || u.x + u.w < x0) return;
       fillRR(c, u.x - 6, u.top - 14, 12, L.floorY - u.top + 14, 3, C.wood, C.woodDark, 2);
@@ -287,11 +294,10 @@ export class WorldView {
     text(c, 'PLUSH PALS', p.x + p.w / 2, p.y + 28, 12, C.cream, 'center', 700);
 
     // Tote rack
-    const tt = L.tote!;
+    const tt = L.powerup!;
     c.fillStyle = '#6d6a70';
     c.fillRect(tt.x + tt.w / 2 - 2, tt.y - 30, 4, L.floorY - tt.y + 30);
     c.fillRect(tt.x - 4, tt.y - 30, tt.w + 8, 4);
-    if (!g.toteTaken) drawTote(c, tt.x + tt.w / 2, tt.y + 14, 1);
 
     // Counter, register, mini-bottle rack
     const k = L.counter!;
@@ -320,6 +326,18 @@ export class WorldView {
         drawBottle(c, bx, ty + 10, tier === 1 && i === 2 ? 'golden' : 'mini', tier * 4 + i, 0);
       }
     }
+
+    // Tonight's colour goes over the store itself. The bottles and everyone in the store go on top, so they stand out against it.
+    if (wash) {
+      c.save();
+      c.globalCompositeOperation = 'multiply';
+      c.fillStyle = wash;
+      c.fillRect(x0 - 40, -40, x1 - x0 + 80, VIEW_H + 80);
+      c.restore();
+      shelfBottles();
+    }
+    if (!g.has(tt.kind)) drawPowerup(c, tt.kind, tt.x + tt.w / 2, tt.y + 14, 1); // on top of the wash, so it catches the eye
+    drawScorches(c, g.blasts, x0, x1);
 
     // Dawn light creeping in from the front windows toward the counter
     if (frac > NIGHT.dawnLightFrom) {
@@ -376,6 +394,7 @@ export class WorldView {
 
     if (g.possum) drawPossum(c, g.possum, time);
     if (!g.tutorial) this.scrubber(c, g, time);
+    drawShells(c, g.shells);
   }
 
   /** The dotted arc while you hold Throw: exactly where the lob will fly. */
@@ -398,6 +417,7 @@ export class WorldView {
     const S = g.scrub;
     const y = g.level.floorY;
     const w = SCRUBBER.w;
+    if (S.tank && S.state === 'down') return drawTank(c, S, y, time, g.camOrigin());
     if (S.state === 'down') {
       // Bowled over: upside down, wheels spinning.
       ellipse(c, S.x, y - 2, w / 2 + 4, 4, withAlpha('#000', 0.3));
@@ -451,6 +471,7 @@ export class WorldView {
       postSplash(c, g.level, hits, '#22b8ff', 0.5, SCRUBBER.camRange);
       c.restore();
     }
+    if (S.tank) return drawTank(c, S, y, time, o);
     // The telescoping pole, when the eye is up.
     const raised = S.eye > SCRUBBER.h + 2;
     if (raised) {
@@ -624,16 +645,17 @@ export class WorldView {
     c.save();
     c.globalCompositeOperation = 'lighter';
     const lights = L.lights ?? [330, 1000, 1500, 2150, 2760];
+    const { lamp, bulb } = NIGHTS[g.night - 1];
     for (const lx of lights) {
       if (lx < x0 - 300 || lx > x0 + WORLD_VIEW_W + 380) continue;
       const pulse = 0.85 + 0.15 * Math.sin(time * 3 + lx);
-      glow(c, lx, L.ceilingY + 10, 260, '#ff6a4a', 0.22 * pulse);
+      glow(c, lx, L.ceilingY + 10, 260, lamp, 0.22 * pulse);
     }
     glow(c, g.raccoon.x, g.raccoon.y - 14, 120, C.warm, 0.08);
     c.restore();
     for (const lx of lights) {
       fillRR(c, lx - 16, L.ceilingY, 32, 12, 4, '#3a1c18', C.ink, 1.5);
-      ellipse(c, lx, L.ceilingY + 8, 9, 5, '#ff7a5a');
+      ellipse(c, lx, L.ceilingY + 8, 9, 5, bulb);
     }
   }
 
@@ -647,7 +669,7 @@ export class WorldView {
       buzz: R.buzz,
       cheeks: R.cheeks,
       carry: R.carry,
-      tote: g.toteTaken,
+      sneakers: R.sprint,
     });
     if (R.state === 'ko') {
       // Seeing stars, cartoon-style: dazed, not passed out.
@@ -693,7 +715,7 @@ export class WorldView {
       else if (R.aimT !== null) s = `let go to lob · ${k.down} drop · ←/→ roll`;
       else if (g.highlighted()) s = `${k.grab} grab · hold ${k.throw} to throw`;
       else if (R.fizz > 0.2) s = `tap ${k.grab} to pop the cork`;
-      else if (!g.toteTaken && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.tote!.x + L.tote!.w / 2)) < 40) s = `${k.grab} take the tote bag`;
+      else if (L.powerup && !g.has(L.powerup.kind) && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.powerup.x + L.powerup.w / 2)) < 40) s = `${k.grab} take the ${POWERUP_INFO[L.powerup.kind].name.toLowerCase()}`;
       else if (R.grounded && R.y === L.counter!.y && Math.abs(R.x - (L.rack!.x + L.rack!.w / 2)) < 50 && g.rack.stock > 0) s = `${k.grab} spin the mini-bottle rack`;
       else if (R.carry.length && R.grounded && Math.abs(R.vx) < 20) s = `${k.throw} throw · ${k.hoot} hoot${R.carry.length > 1 ? ` · ${k.swap} switch` : ''}`;
     } else if (L.id === 'roof' && L.vent && g.reaches(L.vent)) s = `${k.grab} pry up the vent`;
@@ -931,21 +953,6 @@ function drawChampagne(c: Ctx, x: number, y: number, rot: number) {
   c.restore();
 }
 
-function drawTote(c: Ctx, x: number, y: number, s: number) {
-  c.save();
-  c.translate(x, y);
-  c.scale(s, s);
-  c.strokeStyle = '#c8b68e';
-  c.lineWidth = 3;
-  c.beginPath();
-  c.arc(0, -10, 8, Math.PI, 0);
-  c.stroke();
-  fillRR(c, -13, -10, 26, 24, 4, '#e8dcbc', '#8a7a58', 2);
-  ellipse(c, 0, 3, 4, 3.5, '#6a6670');
-  for (const [a, b] of [[-4, -3], [0, -5], [4, -3]]) ellipse(c, a, b, 1.6, 1.6, '#6a6670');
-  c.restore();
-}
-
 function drawCousin(c: Ctx, x: number, y: number, time: number, g: Game) {
   const bob = Math.sin(time * 3) * 2;
   const excited = g.says.some((s) => s.who === 'cousin');
@@ -969,7 +976,7 @@ function drawCousin(c: Ctx, x: number, y: number, time: number, g: Game) {
   ellipse(c, x, yy + 8, 2.3, 1.8, C.ink);
 }
 
-export interface RaccoonLook { buzz: number; cheeks: boolean; carry: ItemKind[]; tote: boolean }
+export interface RaccoonLook { buzz: number; cheeks: boolean; carry: ItemKind[]; sneakers: number }
 
 export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: string, time: number, look: RaccoonLook) {
   c.save();
@@ -1003,11 +1010,21 @@ export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: 
   if (pose === 'ko') c.scale(1.1, 0.8); // sprawled flat from the landing
   c.translate(0, -bounce);
   c.rotate(tilt);
-  if (look.tote) drawTote(c, -9, -18, 0.75);
   tail(c, -14, -14, time, pose === 'run' ? 1.6 : 0.6);
   // legs
   const legs = pose === 'climb' ? [[-9, 3], [9, -3]] : [[-10, run], [-4, -run], [6, run], [11, -run]];
   for (const [lx, ph] of legs) fillRR(c, lx - 2.8 + ph * 3, -9, 5.6, 9 + (pose === 'air' ? -2 : 0), 2.8, C.charcoal);
+  // The sneakers show only while they're working, and fade out with the boost.
+  if (look.sneakers > 0) {
+    c.save();
+    c.globalAlpha = look.sneakers;
+    const foot = pose === 'air' ? -2 : 0;
+    for (const [lx, ph] of legs) {
+      fillRR(c, lx - 3.4 + ph * 3, foot - 4.6, 9, 4.6, 2, '#e8463a', C.ink, 0.8);
+      fillRR(c, lx - 3.4 + ph * 3, foot - 1.5, 9, 1.5, 0.7, '#f4efe4');
+    }
+    c.restore();
+  }
   // body
   ellipse(c, 0, -14, 16, 10.5, C.grey);
   ellipse(c, 3, -11, 10, 5.5, C.softGrey);

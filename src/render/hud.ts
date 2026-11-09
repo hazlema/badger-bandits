@@ -5,6 +5,7 @@ import { multFor, type Game } from '../sim/game';
 import { isSpecial } from '../sim/level';
 import { C, ellipse, FONT, fillRR, GRADE_COLOUR, popup, POPUP, rr, text, withAlpha, woodBoards, type Ctx } from './paint';
 import { drawBottle, withKeys, type Prompts } from './world';
+import { drawPowerup, POWERUP_INFO } from './powerups';
 import { LESSONS, TUTORIAL_DONE } from '../sim/training';
 
 /** Price-tag paper, and inks dark enough to read on it. */
@@ -129,9 +130,10 @@ export function drawHud(c: Ctx, g: Game, time: number, k: Prompts) {
     } else paw(c, sx, BAND + 40, 0.72, withAlpha(C.grey, 0.45));
   }
   let ex = 28 + slots * 26 - 8;
-  if (g.toteTaken) {
-    inked(c, 'tote', ex, BAND + 40, 11, '#e6d4b0', 'left', 600);
-    ex += 30;
+  if (g.powerups.length) {
+    const hint = `${k.powers}: powerups`;
+    inked(c, hint, ex, BAND + 40, 11, '#e6d4b0', 'left', 600);
+    ex += hint.length * 6.2 + 6;
   }
   // Coins in your fur, from the till. They only count if you climb out.
   ellipse(c, ex + 8, BAND + 40, 6.5, 6.5, '#6e3a14');
@@ -344,6 +346,29 @@ export function drawPause(c: Ctx, choice: number, pad: boolean) {
     if (on) paw(c, VIEW_W / 2 - 92, by, 1, C.gold);
   });
   text(c, pad ? 'D-pad to choose · A to confirm · Start to resume' : '↑ ↓ to choose · Space to confirm · Esc to resume', VIEW_W / 2, y + h - 30, 14, POPUP.dim, 'center', 500);
+}
+
+/** Everything you've picked up so far this run. Opens over a paused game. */
+export function drawPowers(c: Ctx, g: Game, pad: boolean) {
+  c.fillStyle = 'rgba(15,10,18,0.6)';
+  c.fillRect(0, 0, VIEW_W, VIEW_H);
+  const rows = g.powerups.length;
+  const w = 520;
+  const h = 128 + Math.max(rows, 1) * 78;
+  const x = (VIEW_W - w) / 2;
+  const y = (VIEW_H - h) / 2;
+  popup(c, x, y, w, h, -0.008);
+  text(c, 'Powerups', VIEW_W / 2, y + 44, 36, POPUP.ink, 'center', 700);
+  if (!rows) text(c, 'None yet. Check the rack by the counter.', VIEW_W / 2, y + 112, 18, POPUP.dim, 'center', 600);
+  g.powerups.forEach((p, i) => {
+    const ry = y + 82 + i * 78;
+    const info = POWERUP_INFO[p];
+    fillRR(c, x + 34, ry, 64, 64, 10, POPUP.well, POPUP.edge, 2);
+    drawPowerup(c, p, x + 66, ry + 32, 1.15);
+    text(c, info.name, x + 116, ry + 20, 21, POPUP.ink, 'left', 700);
+    text(c, info.text, x + 116, ry + 46, 15, POPUP.dim, 'left', 500);
+  });
+  text(c, pad ? 'Select to close' : 'P to close', VIEW_W / 2, y + h - 24, 14, POPUP.dim, 'center', 500);
 }
 
 const REASONS: Record<string, string> = {

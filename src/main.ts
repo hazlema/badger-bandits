@@ -5,9 +5,10 @@ import './style.css';
 import { Sound } from './audio';
 import { DT, NIGHTS, VIEW_H, VIEW_W } from './config';
 import { Controls } from './input';
-import { drawCard, drawFinal, drawHud, drawPause, type NightScore } from './render/hud';
+import { drawCard, drawFinal, drawHud, drawPause, drawPowers, type NightScore } from './render/hud';
 import { WorldView, type Prompts } from './render/world';
 import { Game } from './sim/game';
+import type { Powerup } from './sim/level';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -40,9 +41,10 @@ Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTim
 let seed = Date.now() % 100000;
 let night = firstNight;
 let run: NightScore[] = []; // the nights finished so far this run
+let powerups: Powerup[] = []; // kept from night to night, caught or not
 let game = newGame();
 let view = new WorldView();
-let mode: 'title' | 'play' | 'paused' | 'card' | 'final' = skipTo ? 'play' : 'title';
+let mode: 'title' | 'play' | 'paused' | 'powers' | 'card' | 'final' = skipTo ? 'play' : 'title';
 front.classList.toggle('hidden', mode !== 'title');
 let pauseChoice = 0; // 0 Resume, 1 Quit to title
 let cardPage = 0; // 0 the report card, 1 the night log on its back
@@ -52,12 +54,13 @@ let offY = 0;
 
 function newGame(start: 'store' | 'training' | 'tutorial' = skipTo ?? 'store') {
   seed = (seed * 16807 + 7) % 2147483647;
-  return new Game({ seed, start, night });
+  return new Game({ seed, start, night, powerups });
 }
 
 function restart(to: typeof mode = 'play') {
   night = firstNight;
   run = [];
+  powerups = [];
   game = newGame();
   view = new WorldView();
   mode = to;
@@ -72,6 +75,7 @@ function nextNight() {
     return;
   }
   night++;
+  powerups = [...game.powerups];
   game = newGame('store');
   view = new WorldView();
   mode = 'play';
@@ -131,8 +135,8 @@ resize();
 
 function keys(): Prompts {
   return controls.usingPad
-    ? { grab: 'X', up: 'Up', down: 'Down', jump: 'A', throw: 'B', swap: 'LB', hoot: 'Y' }
-    : { grab: 'E', up: '↑', down: '↓', jump: 'Space', throw: 'F', swap: 'Q', hoot: 'R' };
+    ? { grab: 'X', up: 'Up', down: 'Down', jump: 'A', throw: 'B', swap: 'LB', hoot: 'Y', powers: 'Select' }
+    : { grab: 'E', up: '↑', down: '↓', jump: 'Space', throw: 'F', swap: 'Q', hoot: 'R', powers: 'P' };
 }
 
 let acc = 0;
@@ -157,11 +161,13 @@ function frame(now: number) {
     else if ((mode === 'card' || mode === 'final') && (m === 'Escape' || m === 'PadStart')) restart('title');
     else if (mode === 'card' && confirm) nextNight();
     else if (mode === 'final' && confirm) restart('play');
-    else if (mode === 'play' && (m === 'Escape' || m === 'KeyP' || m === 'PadStart')) {
+    else if (mode === 'play' && (m === 'KeyP' || m === 'PadSelect')) mode = 'powers';
+    else if (mode === 'powers' && (m === 'KeyP' || m === 'PadSelect' || m === 'Escape' || m === 'PadStart')) mode = 'play';
+    else if (mode === 'play' && (m === 'Escape' || m === 'PadStart')) {
       mode = 'paused';
       pauseChoice = 0;
     } else if (mode === 'paused') {
-      if (m === 'Escape' || m === 'KeyP' || m === 'PadStart') mode = 'play';
+      if (m === 'Escape' || m === 'PadStart') mode = 'play';
       else if (['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'PadUp', 'PadDown'].includes(m)) pauseChoice = 1 - pauseChoice;
       else if (confirm) {
         if (pauseChoice === 0) mode = 'play';
@@ -190,7 +196,7 @@ function frame(now: number) {
       }
     }
   } else acc = 0;
-  sound.update(mode === 'title' ? null : game, mode === 'final' ? 'card' : mode, dt);
+  sound.update(mode === 'title' ? null : game, mode === 'final' ? 'card' : mode === 'powers' ? 'paused' : mode, dt);
 
   ctx.save();
   ctx.fillStyle = '#120d14';
@@ -204,6 +210,7 @@ function frame(now: number) {
   view.draw(ctx, game, time, keys());
   drawHud(ctx, game, time, keys());
   if (mode === 'paused') drawPause(ctx, pauseChoice, controls.usingPad);
+  if (mode === 'powers') drawPowers(ctx, game, controls.usingPad);
   if (mode === 'card') drawCard(ctx, game, time, controls.usingPad, cardPage);
   if (mode === 'final') drawFinal(ctx, run, time, controls.usingPad);
   if (mode === 'title') {
