@@ -3,7 +3,7 @@
 A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
 the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
 
-Nights 1 and 2 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
+Nights 1 to 3 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
 run ends on a total of all your nights.
 
 ## Running it
@@ -15,7 +15,7 @@ npm install
 npm run dev       # then open http://localhost:5173
 ```
 
-Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2` to start
+Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2` or `?night=3` to start
 on a later night, or `?training` to skip to the tutorial's practice store.
 `npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
 
@@ -106,6 +106,23 @@ slots (Q picks which).
 - **The counter:** spin the mini-bottle rack for minis (sometimes a golden one), and take the tote bag to carry 8
   instead of 5.
 - The cousin will tell you off if you smash too much without handing anything up.
+
+### Night 3
+
+A Renaissance faire in the woods out back. Separate bottle trees instead of shelves, so you hop branch to branch or
+cross open grass. Your cousin waits in the hollow at the top of the third tree.
+
+- **Archers** replace the floor security. Seven of them stay behind hay, barrels, targets and a cart, and can't be hit
+  while hidden. When you're in range and in the open, one stands up, follows you with its bow, locks for a moment
+  (the dotted line goes solid), and shoots. An arrow is 5% and a dropped bottle like any hit. Playing dead stops them
+  aiming at you. Trunks and branches stop arrows. A bottle that hits a standing archer knocks them out for 4 s.
+- **Arrows set things off:** one through a string drops that bottle, one that hits a standing archer knocks them over,
+  and one that hits Bob flattens him.
+- **Hay bales:** a bottle that lands on one doesn't break, and you can pick it up from the grass beside the bale. Stand
+  in the middle of a bale and arrows can't reach you.
+- **Pot lid:** on the rack near the mead stall. Blocks one arrow, then needs 20 s.
+- **Sir Bob** is in period garb and talks the part. He kept the flashlight. Numbers are in `ARCHER` and `SHIELD` in
+  `src/config.ts`.
 
 ### Powerups
 

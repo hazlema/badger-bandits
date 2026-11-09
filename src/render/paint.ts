@@ -242,3 +242,11 @@ export function popup(c: Ctx, x: number, y: number, w: number, h: number, tilt =
   c.stroke();
   c.restore();
 }
+
+/** Between two #rrggbb colours. */
+export function mix(a: string, b: string, t: number): string {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const ch = (s: number) => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}

@@ -23,7 +23,11 @@ export interface Prop { kind: 'cases' | 'crate' | 'barrel' | 'dolly' | 'mop' | '
 export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
 /** Powerups stay with you from night to night. */
-export type Powerup = 'tote' | 'sneakers';
+export type Powerup = 'tote' | 'sneakers' | 'shield';
+
+/** How far below its branch a hanging bottle's base sits. */
+export const HANG = 44;
+export type CoverKind = 'bale' | 'barrel' | 'target' | 'cart';
 
 export interface Level {
   id: 'roof' | 'crawl' | 'store';
@@ -58,6 +62,9 @@ export interface Level {
   register?: Rect; // only where it can be mashed; otherwise the counter's till is just scenery
   lights?: number[]; // x of each emergency light
   rugX?: number;
+  faire?: boolean; // night 3: outdoors. Boards are branches, units are trunks, and bottles hang
+  bales?: Rect[]; // hay: a bottle that lands on one doesn't break
+  archers?: { x: number; cover: CoverKind }[];
 }
 
 export function roofLevel(): Level {
@@ -122,11 +129,12 @@ function shelving(defs: [number, number, number[]][]): { units: Unit[]; boards: 
 }
 
 /** Fill the shelves, then swap regular bottles for the night's specials and champagne, anywhere but the shelf under the hole. */
-function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y: number }, night: number): BottleDef[] {
+function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y: number }, night: number, skip?: (x: number, b: Board) => boolean): BottleDef[] {
   const bottles: BottleDef[] = [];
   boards.forEach((b, i) => {
     if (b.unit === hole.unit && b.y === hole.y) return; // the hand-up board stays clear
     for (let x = b.x1 + 24; x < b.x2 - 16; x += 30) {
+      if (skip?.(x, b)) continue;
       if (r() < 0.3) continue;
       bottles.push({ x, y: b.y, kind: r() < 0.3 ? 'mini' : 'regular', board: i });
     }
@@ -144,7 +152,7 @@ function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y:
 
 /** The store for a night (1-based). */
 export function nightLevel(night: number): Level {
-  return night === 2 ? checkoutLevel() : storeLevel(1);
+  return night === 3 ? faireLevel() : night === 2 ? checkoutLevel() : storeLevel(1);
 }
 
 /**
@@ -204,6 +212,75 @@ function checkoutLevel(): Level {
     possum,
     lights: [300, 880, 1600, 2200, 2750, 3300],
     rugX: 1640,
+  };
+}
+
+/**
+ * Night 3: a Renaissance faire in the woods out back. Separate trees instead of long shelves, so getting around means
+ * hopping branch to branch or crossing open ground in front of the archers. Trees as [trunk centre, [branch y, half width]].
+ */
+function faireLevel(): Level {
+  const r = rng(3);
+  const floorY = 500;
+  const width = 3900;
+  const trees: [number, [number, number][]][] = [
+    [230, [[410, 165], [320, 145], [230, 105]]],
+    [690, [[400, 175], [310, 150], [220, 115], [140, 70]]],
+    [1170, [[410, 170], [320, 150], [230, 120], [130, 75]]], // your cousin's: the top branch is the hand-up
+    [1660, [[405, 170], [310, 140], [215, 100]]],
+    [2160, [[410, 175], [320, 150], [230, 120], [150, 70]]],
+    [2640, [[400, 170], [300, 140], [210, 95]]],
+    [3100, [[410, 165], [320, 140], [230, 100]]],
+  ];
+  const TRUNK = 36;
+  const units: Unit[] = [];
+  const boards: Board[] = [];
+  trees.forEach(([cx, tiers], u) => {
+    units.push({ x: cx - TRUNK / 2, w: TRUNK, top: Math.min(...tiers.map((t) => t[0])) });
+    for (const [y, half] of tiers) boards.push({ x1: cx - half, x2: cx + half, y, unit: u });
+  });
+  const bottles = stockShelves(r, boards, { unit: 2, y: 130 }, 3, (x, b) => Math.abs(x - (units[b.unit].x + TRUNK / 2)) < 28);
+
+  const archers: { x: number; cover: CoverKind }[] = [
+    { x: 455, cover: 'bale' },
+    { x: 930, cover: 'barrel' },
+    { x: 1415, cover: 'target' },
+    { x: 2060, cover: 'barrel' },
+    { x: 2400, cover: 'cart' },
+    { x: 2870, cover: 'bale' },
+    { x: 3300, cover: 'target' },
+  ];
+  const BALE = { w: 72, h: 34 };
+  const bales: Rect[] = [150, 620, 1650, 2700, 3090, ...archers.filter((a) => a.cover === 'bale').map((a) => a.x - BALE.w / 2)].map((x) => ({ x, y: floorY - BALE.h, ...BALE }));
+  for (const b of bales) boards.push({ x1: b.x, x2: b.x + b.w, y: b.y, unit: -1 });
+
+  const counter = { x: 3440, y: 420, w: 300, h: 80 }; // the mead stall
+  const plush = { x: 1840, y: 450, w: 140, h: 50 }; // the prize booth
+  boards.push({ x1: plush.x, x2: plush.x + plush.w, y: plush.y, unit: -1 });
+
+  return {
+    id: 'store',
+    faire: true,
+    width,
+    floorY,
+    ceilingY: 40,
+    solids: [{ x: 0, y: floorY, w: width, h: 40 }, counter],
+    boards,
+    climbables: [],
+    units,
+    bottles,
+    signs: [],
+    start: { x: 1170, y: 130 },
+    hole: { x: 1125, y: 60, w: 90, h: 70 },
+    plush,
+    powerup: { kind: 'shield', x: 3350, y: 440, w: 34, h: 40 },
+    rack: { x: 3660, y: 362, w: 44, h: 58 },
+    counter,
+    door: { x: 3800, y: 400, w: 70, h: 100 },
+    bobRoute: [90, 3790],
+    lights: [440, 945, 1400, 1930, 2415, 2885, 3280],
+    bales,
+    archers,
   };
 }
 

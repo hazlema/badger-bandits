@@ -3,11 +3,13 @@
 import { BOB, BOB_THROW, NIGHT, NIGHTS, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
 import type { Game, Raccoon } from '../sim/game';
 import { isSpecial, type ItemKind, type Level } from '../sim/level';
-import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx } from './paint';
+import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx, mix } from './paint';
 import { acUnit, building, chalkboard, crawlAttic, crawlBelow, crawlTunnel, floorProp, propHalfWidth, roofBackdrop, roofDressing, roofVent, trellis, wainscot, woodSign } from './scenery';
+import { HANG } from '../sim/level';
 import { caseStack, checkoutBelt, drawPossum, tillRegister } from './checkout';
 import { drawBlasts, drawScorches, drawShells, drawTank } from './tank';
 import { drawPowerup, POWERUP_INFO } from './powerups';
+import { drawArcher, drawArrows, drawBale, drawCover, drawFloaters, drawStall, drawStuck, drawTrees, faireBackdrop, COVER_H, torches } from './faire';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
 
@@ -53,6 +55,7 @@ export class WorldView {
 
     if (L.id === 'roof') this.roof(c, g, time);
     else if (L.id === 'crawl') this.crawl(c, g, time);
+    else if (L.faire) this.faire(c, g, time);
     else this.store(c, g, time, keys);
 
     this.raccoon(c, g, R, time);
@@ -66,6 +69,7 @@ export class WorldView {
       this.bob(c, g, time);
       this.lighting(c, g, time);
       drawBlasts(c, g.blasts);
+      drawFloaters(c, g.floaters);
       for (const r of g.rings) {
         const k = r.age / 0.9;
         c.beginPath();
@@ -250,25 +254,7 @@ export class WorldView {
       if (b.x1 > x1 || b.x2 < x0 || b.unit < 0) continue;
       fillRR(c, b.x1 - 2, b.y, b.x2 - b.x1 + 4, 10, 2, C.woodLight, C.woodDark, 2);
     }
-    const lit = g.highlighted();
-    const shelfBottles = () => {
-    for (const b of g.bottles) {
-      if (b.state !== 'shelf' || b.x < x0 || b.x > x1) continue;
-      if (b === lit) {
-        glow(c, b.x, b.y - 14, 26, C.gold, 0.55 + 0.2 * Math.sin(time * 8));
-        c.beginPath();
-        c.moveTo(b.x - 5, b.y - 40 + Math.sin(time * 6) * 2);
-        c.lineTo(b.x + 5, b.y - 40 + Math.sin(time * 6) * 2);
-        c.lineTo(b.x, b.y - 33 + Math.sin(time * 6) * 2);
-        c.fillStyle = C.gold;
-        c.fill();
-      }
-      // The rum captain turns his head and salutes when you get close.
-      const near = Math.hypot(g.raccoon.x - b.x, g.raccoon.y - b.y) < 90;
-      drawBottle(c, b.x, b.y, b.kind, b.id, 0, { salute: b.kind === 'rum' && near ? Math.min(1, (time * 4) % 6) : 0, face: Math.sign(g.raccoon.x - b.x) });
-      if (isSpecial(b.kind)) drawSmoke(c, b.x, b.y - 27, b.kind, b.id, time);
-    }
-    };
+    const shelfBottles = () => this.shelfBottles(c, g, time, x0, x1);
     const wash = NIGHTS[g.night - 1].wash;
     if (!wash) shelfBottles();
     L.units.forEach((u) => {
@@ -277,21 +263,7 @@ export class WorldView {
       fillRR(c, u.x + u.w - 6, u.top - 14, 12, L.floorY - u.top + 14, 3, C.wood, C.woodDark, 2);
     });
 
-    // Plush display
-    const p = L.plush!;
-    if (g.plushGlow > 0) glow(c, p.x + p.w / 2, p.y, 140, C.warm, 0.35 + 0.25 * Math.sin(time * 6));
-    const plushCols = ['#8f8b93', '#a8673a', '#d97a3a', '#cfc7c0', '#6b8f4e', '#c24a4a'];
-    for (let k = 0; k < 9; k++) {
-      const px = p.x + 12 + k * 15;
-      const py = p.y + 4 + (k % 2) * 6 - Math.abs(Math.sin(g.plushPuff * 12 + k)) * g.plushPuff * 14;
-      ellipse(c, px, py, 11, 10, plushCols[k % plushCols.length]);
-      ellipse(c, px - 6, py - 8, 4, 4, plushCols[k % plushCols.length]);
-      ellipse(c, px + 6, py - 8, 4, 4, plushCols[k % plushCols.length]);
-      ellipse(c, px - 3, py - 1, 1.5, 1.5, C.ink);
-      ellipse(c, px + 3, py - 1, 1.5, 1.5, C.ink);
-    }
-    fillRR(c, p.x - 6, p.y + 6, p.w + 12, L.floorY - p.y - 6, 6, '#8a5b8c', '#4a2a4a', 2.5);
-    text(c, 'PLUSH PALS', p.x + p.w / 2, p.y + 28, 12, C.cream, 'center', 700);
+    this.plushDisplay(c, g, time, 'PLUSH PALS');
 
     // Tote rack
     const tt = L.powerup!;
@@ -312,20 +284,7 @@ export class WorldView {
       checkoutBelt(c, L.belt, time);
       for (const b of g.bottles) if (b.state === 'belt') drawBottle(c, b.x, b.y - 7, b.kind, b.id, 0);
     }
-    const rk = L.rack!;
-    const spin = g.rack.spin;
-    c.fillStyle = '#8f8b93';
-    c.fillRect(rk.x + rk.w / 2 - 2, rk.y + 8, 4, rk.h - 8);
-    for (let tier = 0; tier < 3; tier++) {
-      const ty = rk.y + 10 + tier * 16;
-      fillRR(c, rk.x, ty + 10, rk.w, 4, 2, '#b9b4ba');
-      for (let i = 0; i < 4; i++) {
-        const a = time * (spin > 0 ? 14 : 0.3) + i * 1.57 + tier;
-        const bx = rk.x + rk.w / 2 + Math.cos(a) * 18;
-        if (Math.sin(a) < -0.2 || g.rack.stock <= tier * 3 + i) continue;
-        drawBottle(c, bx, ty + 10, tier === 1 && i === 2 ? 'golden' : 'mini', tier * 4 + i, 0);
-      }
-    }
+    this.miniRack(c, g, time);
 
     // Tonight's colour goes over the store itself. The bottles and everyone in the store go on top, so they stand out against it.
     if (wash) {
@@ -357,6 +316,49 @@ export class WorldView {
       c.fill();
     }
 
+    this.floorMarks(c, g, time, x0, x1);
+
+    if (g.possum) drawPossum(c, g.possum, time);
+    if (!g.tutorial) this.scrubber(c, g, time);
+    drawShells(c, g.shells);
+  }
+
+  private plushDisplay(c: Ctx, g: Game, time: number, label: string) {
+    const p = g.level.plush!;
+    const L = g.level;
+    if (g.plushGlow > 0) glow(c, p.x + p.w / 2, p.y, 140, C.warm, 0.35 + 0.25 * Math.sin(time * 6));
+    const plushCols = ['#8f8b93', '#a8673a', '#d97a3a', '#cfc7c0', '#6b8f4e', '#c24a4a'];
+    for (let k = 0; k < 9; k++) {
+      const px = p.x + 12 + k * 15;
+      const py = p.y + 4 + (k % 2) * 6 - Math.abs(Math.sin(g.plushPuff * 12 + k)) * g.plushPuff * 14;
+      ellipse(c, px, py, 11, 10, plushCols[k % plushCols.length]);
+      ellipse(c, px - 6, py - 8, 4, 4, plushCols[k % plushCols.length]);
+      ellipse(c, px + 6, py - 8, 4, 4, plushCols[k % plushCols.length]);
+      ellipse(c, px - 3, py - 1, 1.5, 1.5, C.ink);
+      ellipse(c, px + 3, py - 1, 1.5, 1.5, C.ink);
+    }
+    fillRR(c, p.x - 6, p.y + 6, p.w + 12, L.floorY - p.y - 6, 6, '#8a5b8c', '#4a2a4a', 2.5);
+    text(c, label, p.x + p.w / 2, p.y + 28, 12, C.cream, 'center', 700);
+  }
+
+  private miniRack(c: Ctx, g: Game, time: number) {
+    const rk = g.level.rack!;
+    const spin = g.rack.spin;
+    c.fillStyle = '#8f8b93';
+    c.fillRect(rk.x + rk.w / 2 - 2, rk.y + 8, 4, rk.h - 8);
+    for (let tier = 0; tier < 3; tier++) {
+      const ty = rk.y + 10 + tier * 16;
+      fillRR(c, rk.x, ty + 10, rk.w, 4, 2, '#b9b4ba');
+      for (let i = 0; i < 4; i++) {
+        const a = time * (spin > 0 ? 14 : 0.3) + i * 1.57 + tier;
+        const bx = rk.x + rk.w / 2 + Math.cos(a) * 18;
+        if (Math.sin(a) < -0.2 || g.rack.stock <= tier * 3 + i) continue;
+        drawBottle(c, bx, ty + 10, tier === 1 && i === 2 ? 'golden' : 'mini', tier * 4 + i, 0);
+      }
+    }
+  }
+
+  private floorMarks(c: Ctx, g: Game, time: number, x0: number, x1: number) {
     // Spills. A big one on the floor runs downhill toward the front as a shining stream.
     for (const s of g.spills) {
       if (Math.max(s.x, s.x0) < x0 || Math.min(s.x, s.x0) > x1) continue;
@@ -391,10 +393,66 @@ export class WorldView {
       ellipse(c, pr.x, pr.y - 1, 4, 1.6, withAlpha('#7fd8ff', a));
       for (const dx of [-3, 0, 3]) ellipse(c, pr.x + pr.facing * 4 + dx * 0.6, pr.y - 2.5 + Math.abs(dx) * 0.2, 1, 0.8, withAlpha('#7fd8ff', a));
     }
+  }
 
-    if (g.possum) drawPossum(c, g.possum, time);
-    if (!g.tutorial) this.scrubber(c, g, time);
-    drawShells(c, g.shells);
+  /** Night 3: the faire in the woods. Same world as a store underneath: branches are boards and trunks are units. */
+  private faire(c: Ctx, g: Game, time: number) {
+    const L = g.level;
+    const x0 = this.camX - 40;
+    const x1 = this.camX + WORLD_VIEW_W + 40;
+    faireBackdrop(c, L, x0, x1, this.camX, time, g.t / g.nightLength);
+    torches(c, L, time);
+    drawTrees(c, L, x0, x1, time);
+    const h = L.hole!;
+    drawCousin(c, h.x + h.w / 2, L.ceilingY + 4, time, g);
+    for (const b of L.bales ?? []) if (b.x + b.w > x0 && b.x < x1) drawBale(c, b);
+    this.shelfBottles(c, g, time, x0, x1);
+    this.plushDisplay(c, g, time, 'PRIZES');
+    const pu = L.powerup!;
+    c.fillStyle = '#5f412b';
+    c.fillRect(pu.x + pu.w / 2 - 2, pu.y - 30, 4, L.floorY - pu.y + 30);
+    c.fillRect(pu.x - 4, pu.y - 30, pu.w + 8, 4);
+    if (!g.has(pu.kind)) drawPowerup(c, pu.kind, pu.x + pu.w / 2, pu.y + 14, 1);
+    drawStall(c, L.counter!);
+    this.miniRack(c, g, time);
+    this.floorMarks(c, g, time, x0, x1);
+    L.archers?.forEach((a, i) => {
+      if (a.x < x0 - 80 || a.x > x1 + 80) return;
+      drawArcher(c, g.archers[i], L.floorY, COVER_H[a.cover], time);
+      drawCover(c, a.cover, a.x, L.floorY);
+    });
+    drawStuck(c, g.stuck);
+    drawArrows(c, g.arrows);
+  }
+
+  private shelfBottles(c: Ctx, g: Game, time: number, x0: number, x1: number) {
+    const lit = g.highlighted();
+    for (const b of g.bottles) {
+      if (b.state !== 'shelf' || b.x < x0 || b.x > x1) continue;
+      const hang = g.hanging(b);
+      const y = hang ? b.y + HANG : b.y;
+      if (hang) {
+        c.strokeStyle = 'rgba(233,222,190,0.75)';
+        c.lineWidth = 1.2;
+        c.beginPath();
+        c.moveTo(b.x, b.y + 8);
+        c.lineTo(b.x, y - 26);
+        c.stroke();
+      }
+      if (b === lit) {
+        glow(c, b.x, y - 14, 26, C.gold, 0.55 + 0.2 * Math.sin(time * 8));
+        c.beginPath();
+        c.moveTo(b.x - 5, y - 40 + Math.sin(time * 6) * 2);
+        c.lineTo(b.x + 5, y - 40 + Math.sin(time * 6) * 2);
+        c.lineTo(b.x, y - 33 + Math.sin(time * 6) * 2);
+        c.fillStyle = C.gold;
+        c.fill();
+      }
+      // The rum captain turns his head and salutes when you get close.
+      const near = Math.hypot(g.raccoon.x - b.x, g.raccoon.y - b.y) < 90;
+      drawBottle(c, b.x, y, b.kind, b.id, 0, { salute: b.kind === 'rum' && near ? Math.min(1, (time * 4) % 6) : 0, face: Math.sign(g.raccoon.x - b.x) });
+      if (isSpecial(b.kind)) drawSmoke(c, b.x, y - 27, b.kind, b.id, time);
+    }
   }
 
   /** The dotted arc while you hold Throw: exactly where the lob will fly. */
@@ -530,15 +588,19 @@ export class WorldView {
     if (B.state === 'outside') return;
     const L = g.level;
     const fy = L.floorY;
+    // On faire night he's in period garb: motley hose, a tunic, a feathered hat. He kept the flashlight.
+    const garb = L.faire
+      ? { legA: '#7a2f3a', legB: '#2f5a7a', body: '#a8843a', belt: '#4a2a1a', badge: '#f0d27a', cap: '#2f6a4a' }
+      : { legA: '#4b4a3a', legB: '#55543f', body: '#a89668', belt: '#3d3528', badge: '#cfa64a', cap: '#2c3a5c' };
     const o = g.beamOrigin();
     if (B.state === 'down') {
       // Flat on his back, flashlight rolling loose, stars overhead.
       const x = B.x;
       ellipse(c, x, fy - 1, 52, 6, withAlpha('#000', 0.35));
-      fillRR(c, x - 44, fy - 14, 40, 12, 5, '#4b4a3a', C.ink, 2);
-      fillRR(c, x - 8, fy - 22, 42, 20, 9, '#a89668', C.ink, 2.5);
+      fillRR(c, x - 44, fy - 14, 40, 12, 5, garb.legA, C.ink, 2);
+      fillRR(c, x - 8, fy - 22, 42, 20, 9, garb.body, C.ink, 2.5);
       ellipse(c, x + 46, fy - 13, 12, 12, '#e6b48c');
-      fillRR(c, x + 52, fy - 26, 10, 26, 4, '#2c3a5c');
+      fillRR(c, x + 52, fy - 26, 10, 26, 4, garb.cap);
       ellipse(c, x + 46, fy - 16, 2, 2, C.ink);
       fillRR(c, x - 60, fy - 9, 10, 8, 2, '#33333a');
       for (let i = 0; i < 3; i++) text(c, '✶', x + 46 + Math.cos(time * 4 + i * 2.1) * 18, fy - 40 + Math.sin(time * 4 + i * 2.1) * 6, 13, C.gold, 'center', 700);
@@ -577,15 +639,15 @@ export class WorldView {
     const ph = moving ? Math.sin(time * (B.state === 'chase' ? 12 : 6)) : 0;
     ellipse(c, x, fy - 1, 26, 5, withAlpha('#000', 0.35));
     // legs
-    fillRR(c, x - 12 + ph * 5, fy - 40, 11, 38, 4, '#4b4a3a', C.ink, 2);
-    fillRR(c, x + 1 - ph * 5, fy - 40, 11, 38, 4, '#55543f', C.ink, 2);
+    fillRR(c, x - 12 + ph * 5, fy - 40, 11, 38, 4, garb.legA, C.ink, 2);
+    fillRR(c, x + 1 - ph * 5, fy - 40, 11, 38, 4, garb.legB, C.ink, 2);
     fillRR(c, x - 14 + ph * 5, fy - 8, 15, 8, 3, '#2a2220');
     fillRR(c, x - 1 - ph * 5, fy - 8, 15, 8, 3, '#2a2220');
     // body
-    fillRR(c, x - 17, fy - 78, 34, 42, 10, '#a89668', C.ink, 2.5);
-    c.fillStyle = '#3d3528';
+    fillRR(c, x - 17, fy - 78, 34, 42, 10, garb.body, C.ink, 2.5);
+    c.fillStyle = garb.belt;
     c.fillRect(x - 17, fy - 42, 34, 5);
-    fillRR(c, x - d * 4 - 5, fy - 72, 10, 10, 2, '#cfa64a');
+    fillRR(c, x - d * 4 - 5, fy - 72, 10, 10, 2, garb.badge);
     // pole arm (back) and the catch pole
     const reach = chase ? 1 : 0.55;
     c.strokeStyle = '#6b5a3a';
@@ -606,14 +668,23 @@ export class WorldView {
     c.beginPath();
     c.arc(x + d * 2, fy - 90, 13, 0, Math.PI * 2);
     c.stroke();
-    fillRR(c, x - 14 + d * 2, fy - 106, 28, 10, 4, '#2c3a5c');
-    fillRR(c, x + (d > 0 ? 6 : -22), fy - 99, 16, 4, 2, '#2c3a5c');
+    fillRR(c, x - 14 + d * 2, fy - 106, 28, 10, 4, garb.cap);
+    fillRR(c, x + (d > 0 ? 6 : -22), fy - 99, 16, 4, 2, garb.cap);
+    if (L.faire) {
+      // A very proud feather.
+      c.strokeStyle = '#f4efe4';
+      c.lineWidth = 3;
+      c.beginPath();
+      c.moveTo(x - d * 10, fy - 104);
+      c.quadraticCurveTo(x - d * 30, fy - 128, x - d * 40, fy - 112);
+      c.stroke();
+    }
     ellipse(c, x + d * 8, fy - 91, 2, 2, C.ink);
     fillRR(c, x + d * 4 - 6, fy - 85, 12, 4, 2, '#6b4a30');
     if (B.state === 'look' || B.state === 'confused') text(c, '?', x, fy - 122, 20, C.cream, 'center', 700);
     if (B.state === 'shout') text(c, '!', x, fy - 124, 26, C.red, 'center', 700);
     // flashlight arm
-    c.strokeStyle = '#a89668';
+    c.strokeStyle = garb.body;
     c.lineWidth = 7;
     c.beginPath();
     c.moveTo(x + d * 6, fy - 70);
@@ -624,7 +695,7 @@ export class WorldView {
       // Winding up: the bottle raised high over his head, so you see it coming.
       const hx = x + d * 14;
       const hy = fy - 104 - 6 * Math.sin((B.windT / BOB_THROW.windup) * Math.PI);
-      c.strokeStyle = '#a89668';
+      c.strokeStyle = garb.body;
       c.lineWidth = 7;
       c.beginPath();
       c.moveTo(x - d * 4, fy - 72);
@@ -649,11 +720,11 @@ export class WorldView {
     for (const lx of lights) {
       if (lx < x0 - 300 || lx > x0 + WORLD_VIEW_W + 380) continue;
       const pulse = 0.85 + 0.15 * Math.sin(time * 3 + lx);
-      glow(c, lx, L.ceilingY + 10, 260, lamp, 0.22 * pulse);
+      glow(c, lx, L.faire ? L.floorY - 118 : L.ceilingY + 10, 260, lamp, (L.faire ? 0.3 : 0.22) * pulse);
     }
     glow(c, g.raccoon.x, g.raccoon.y - 14, 120, C.warm, 0.08);
     c.restore();
-    for (const lx of lights) {
+    if (!L.faire) for (const lx of lights) {
       fillRR(c, lx - 16, L.ceilingY, 32, 12, 4, '#3a1c18', C.ink, 1.5);
       ellipse(c, lx, L.ceilingY + 8, 9, 5, bulb);
     }
@@ -749,7 +820,7 @@ export class WorldView {
       x = Math.max(60, Math.min(WORLD_VIEW_W - 60, x)) * WORLD_SCALE;
       y *= WORLD_SCALE;
       c.globalAlpha = Math.min(1, s.ttl * 3);
-      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `Officer Bob: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
+      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `${g.level.faire ? 'Sir Bob' : 'Officer Bob'}: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
       bubble(c, label, x, y);
       c.globalAlpha = 1;
     }
@@ -758,13 +829,6 @@ export class WorldView {
 
 function clampCam(x: number, L: Level) {
   return Math.max(0, Math.min(L.width - WORLD_VIEW_W, x));
-}
-
-function mix(a: string, b: string, t: number): string {
-  const pa = parseInt(a.slice(1), 16);
-  const pb = parseInt(b.slice(1), 16);
-  const ch = (s: number) => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
-  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
 
 /** Distance along a ray to the first shelf end panel, the counter, floor or ceiling. */

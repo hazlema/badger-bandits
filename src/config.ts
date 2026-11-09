@@ -31,6 +31,21 @@ export const RACCOON = {
 // Night 2's powerup (host, 2026-11-09): only works while you're spotted. Boost is a share of sober run speed, so it helps most when you're drunk. Guesses.
 export const SNEAKERS = { boost: 0.2, fade: 2.5 }; // fade: s to wear off once you're out of danger
 
+// Night 3's archers (host, 2026-11-09) stay put and hide behind things. All guesses.
+export const ARCHER = {
+  range: 460,
+  height: 72,
+  eye: 58, // px above the ground the bow is held
+  draw: 1.1, // s from standing up to the arrow
+  lock: 0.25, // stops following you this long before letting go
+  recover: 0.5,
+  every: [2.5, 5] as const, // s hidden between shots
+  arrowSpeed: 600,
+  pitchMin: -0.4,
+  pitchMax: 1.5,
+};
+export const SHIELD = { recharge: 20 }; // s until the pot lid can block again (guess)
+
 export const BUZZ = {
   steps: 5, // (design) sober x1, each step +0.5, top x3.5
   perStep: 0.5,
@@ -68,7 +83,7 @@ export const THROW = {
 // Undecided on the board; the host took the builder's proposal: no health bars,
 // a bottle knocks an enemy off its feet for a while. (guess)
 // s knocked off their feet; Bob's raised from 1.5 so a bonk buys a real getaway (host, 2026-11-07)
-export const KNOCKDOWN = { scrubber: 4, bob: 4.5 };
+export const KNOCKDOWN = { scrubber: 4, bob: 4.5, archer: 4 };
 
 export const FLOW = { speed: 45, min: 140, max: 360 }; // big floor spills run toward the front (guess)
 export const TUTORIAL = { restock: 3 }; // s until the practice store puts a missing bottle back (guess)
@@ -168,8 +183,9 @@ export const RACK = { stock: 8, goldenChance: 0.1, spinTime: 1.1 }; // (guess)
 
 // What changes from night to night. Each night runs a minute longer (design); the counts are guesses.
 export const NIGHTS = [
-  { length: NIGHT.length, specials: SPECIALS, champagne: 0, tank: false, wash: null, lamp: '#ff6a4a', bulb: '#ff7a5a' },
-  { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5, tank: true, wash: '#6288f2', lamp: '#3f8cff', bulb: '#a8d4ff' },
+  { length: NIGHT.length, specials: SPECIALS, champagne: 0, tank: false, archers: false, wash: null, lamp: '#ff6a4a', bulb: '#ff7a5a' },
+  { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5, tank: true, archers: false, wash: '#6288f2', lamp: '#3f8cff', bulb: '#a8d4ff' },
+  { length: 420, specials: { rum: 14, curacao: 14 }, champagne: 6, tank: false, archers: true, wash: null, lamp: '#ffae52', bulb: '#ffd08a' },
 ] as const;
 
 // Champagne (design): run with it and it fizzes up, tap Grab to pop the cork and get rocketed. All guesses.
