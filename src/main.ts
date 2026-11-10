@@ -9,6 +9,7 @@ import { drawCard, drawFinal, drawHud, drawPause, drawPowers, type NightScore } 
 import { WorldView, type Prompts } from './render/world';
 import { Game } from './sim/game';
 import type { Powerup } from './sim/level';
+import { mountTeaser, type Teaser } from '../teaser/film';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -24,8 +25,8 @@ const firstNight = NIGHTS[Number(params.get('night')) - 1] ? Number(params.get('
 // The front door (index.html) is the loading screen, then the start screen. It holds long enough to be seen and
 // ignores keys until everything is in.
 const front = document.getElementById('front')!;
-const menu = [document.getElementById('front-start')!, document.getElementById('front-tutorial')!];
-let menuChoice = 0; // 0 Start Game, 1 Tutorial
+const menu = ['front-start', 'front-tutorial', 'front-intro'].map((id) => document.getElementById(id)!);
+let menuChoice = 0; // 0 Start Game, 1 Tutorial, 2 Watch Intro
 const frontImg = front.querySelector('img')!;
 const muteBtn = document.getElementById('front-mute')!;
 const musicBtn = document.getElementById('front-music')!;
@@ -37,6 +38,37 @@ Promise.all([fonts, frontImg.decode().catch(() => {}), new Promise((r) => setTim
   ready = true;
   front.classList.add('ready');
 });
+
+// The teaser film plays over the front door the first time the game is opened, and after that only from Watch Intro
+// on the menu (host, 2026-11-09). The menu is waiting underneath when it ends or is skipped. While it is up it owns
+// the keyboard, and the game's music holds off. ?store and friends go straight in, and ?menu opens on the menu.
+const INTRO_SEEN = 'plc.introSeen';
+let teaser: Teaser | null = null;
+
+function playIntro() {
+  if (teaser) return;
+  let el = document.getElementById('teaser');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'teaser';
+    document.body.append(el);
+  }
+  const root = el;
+  teaser = mountTeaser(root, {
+    muted: sound.muted,
+    onDone: () => {
+      controls.menu(); // drop the key that skipped it, so it can't also press a menu button
+      teaser = null;
+      root.remove();
+    },
+  });
+}
+
+if (skipTo || params.has('menu') || localStorageGet(INTRO_SEEN) === '1') document.getElementById('teaser')?.remove();
+else {
+  localStorageSet(INTRO_SEEN, '1'); // seen once is enough, even if it was skipped
+  playIntro();
+}
 
 let seed = Date.now() % 100000;
 let night = firstNight;
@@ -89,6 +121,7 @@ function pick(choice: number) {
 
 function start(choice = menuChoice) {
   if (mode !== 'title' || !ready) return;
+  if (choice === 2) return playIntro();
   if (choice === 1) {
     game = newGame('tutorial');
     view = new WorldView();
@@ -100,6 +133,7 @@ function start(choice = menuChoice) {
 
 function toggleMute() {
   localStorageSet('plc.muted', sound.toggle() ? '1' : '0');
+  teaser?.setMuted(sound.muted);
   showSound();
 }
 function toggleMusic() {
@@ -112,7 +146,7 @@ function showSound() {
 }
 showSound();
 // Blur after a click, so a later Space plays rather than pressing the button again.
-for (const [btn, act] of [[menu[0], () => start(0)], [menu[1], () => start(1)], [muteBtn, toggleMute], [musicBtn, toggleMusic]] as const) {
+for (const [btn, act] of [[menu[0], () => start(0)], [menu[1], () => start(1)], [menu[2], () => start(2)], [muteBtn, toggleMute], [musicBtn, toggleMusic]] as const) {
   btn.addEventListener('click', () => {
     act();
     btn.blur();
@@ -155,8 +189,11 @@ function frame(now: number) {
     const confirm = m === 'Space' || m === 'Enter' || m === 'PadA';
     if (m === 'KeyM') toggleMute();
     else if (m === 'KeyN') toggleMusic();
-    else if (mode === 'title' && ready && (confirm || m === 'PadStart')) start();
-    else if (mode === 'title' && ready && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'PadUp', 'PadDown', 'PadLeft', 'PadRight'].includes(m)) pick(1 - menuChoice);
+    else if (teaser) {
+      // The film hears the keyboard itself; only the gamepad has to be passed on.
+      if (m === 'PadA' || m === 'PadStart') teaser.press();
+    } else if (mode === 'title' && ready && (confirm || m === 'PadStart')) start();
+    else if (mode === 'title' && ready && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'PadUp', 'PadDown', 'PadLeft', 'PadRight'].includes(m)) pick((menuChoice + (['ArrowLeft', 'ArrowUp', 'KeyA', 'KeyW', 'PadUp', 'PadLeft'].includes(m) ? menu.length - 1 : 1)) % menu.length);
     else if (mode === 'card' && (m === 'KeyL' || m === 'PadSelect')) cardPage = 1 - cardPage;
     else if ((mode === 'card' || mode === 'final') && (m === 'Escape' || m === 'PadStart')) restart('title');
     else if (mode === 'card' && confirm) nextNight();
@@ -196,7 +233,7 @@ function frame(now: number) {
       }
     }
   } else acc = 0;
-  sound.update(mode === 'title' ? null : game, mode === 'final' ? 'card' : mode === 'powers' ? 'paused' : mode, dt);
+  if (!teaser) sound.update(mode === 'title' ? null : game, mode === 'final' ? 'card' : mode === 'powers' ? 'paused' : mode, dt);
 
   ctx.save();
   ctx.fillStyle = '#120d14';

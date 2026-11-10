@@ -46,6 +46,18 @@ export const ARCHER = {
 };
 export const SHIELD = { recharge: 20 }; // s until the pot lid can block again (guess)
 
+// Night 4's circus (host, 2026-11-09). All guesses.
+export const CLOWN = { w: 34, h: 76, speed: 55, eye: 70, range: 330, half: 0.6, tilt: 0.25, honk: 1.4, cooldown: 7 }; // sees the floor ahead and up into the stands
+export const CRITTER = {
+  alertTime: 8, // s the animals stay riled after a clown honks; they shoot twice as often
+  eagle: { range: 560, wind: 0.8, lock: 0.25, speed: 560, back: 260, every: [4, 7] as const },
+  owl: { range: 420, wind: 0.6, every: [2.8, 4.5] as const, speed: 360, minFlight: 0.55, maxFlight: 1.0 },
+  snake: { range: 380, wind: 0.5, every: [2.5, 4] as const, speed: 420, reachUp: 40 },
+};
+export const CANNON = { flight: 1.1, reach: 30 };
+export const ROPE = { slipFrom: 2, slipPerSec: 0.22 }; // per Buzz step from slipFrom up
+export const SLICK = { life: 10, grip: 0.12, w: 44 };
+
 export const BUZZ = {
   steps: 5, // (design) sober x1, each step +0.5, top x3.5
   perStep: 0.5,
@@ -83,7 +95,7 @@ export const THROW = {
 // Undecided on the board; the host took the builder's proposal: no health bars,
 // a bottle knocks an enemy off its feet for a while. (guess)
 // s knocked off their feet; Bob's raised from 1.5 so a bonk buys a real getaway (host, 2026-11-07)
-export const KNOCKDOWN = { scrubber: 4, bob: 4.5, archer: 4 };
+export const KNOCKDOWN = { scrubber: 4, bob: 4.5, archer: 4, clown: 4, critter: 4 };
 
 export const FLOW = { speed: 45, min: 140, max: 360 }; // big floor spills run toward the front (guess)
 export const TUTORIAL = { restock: 3 }; // s until the practice store puts a missing bottle back (guess)
@@ -186,6 +198,7 @@ export const NIGHTS = [
   { length: NIGHT.length, specials: SPECIALS, champagne: 0, tank: false, archers: false, wash: null, lamp: '#ff6a4a', bulb: '#ff7a5a' },
   { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5, tank: true, archers: false, wash: '#6288f2', lamp: '#3f8cff', bulb: '#a8d4ff' },
   { length: 420, specials: { rum: 14, curacao: 14 }, champagne: 6, tank: false, archers: true, wash: null, lamp: '#ffae52', bulb: '#ffd08a' },
+  { length: 480, specials: { rum: 16, curacao: 16 }, champagne: 6, tank: false, archers: false, wash: null, lamp: '#ffe2a0', bulb: '#fff2c8' },
 ] as const;
 
 // Champagne (design): run with it and it fizzes up, tap Grab to pop the cork and get rocketed. All guesses.

@@ -11,6 +11,14 @@ canvas {
   height: 100vh;
   display: block;
 }
+/* The teaser film (teaser/film.ts) plays over the front door before the menu. Its own styles arrive with the
+   script; this keeps the window black from the first paint, so the front door doesn't flash up ahead of it. */
+#teaser {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+}
 /* The front door: shown while the game loads, then it is the start screen. Plain HTML so it is up before the
    game script arrives. States: .fonts (Fredoka is in, show the wordmark), .ready (loaded, waiting for a key),
    .hidden (in the store). data-input="keys" | "pad" picks which control tags hang off the counter.

@@ -1,0 +1,205 @@
+/* The teaser (film.ts): two clips shown as one film in a cinema frame, the game's wordmark dropped over the end.
+   #teaser is a black sheet over the whole window, and .tz-stage is the frame inside it.
+   States on #teaser: .waiting (poster up, needs a click for sound), .heist and .ending (the two clips, both also
+   .playing), .cut (the ending is the clip on screen), .titled (the wordmark is in), .ended (on the last frame),
+   .leaving (fading away), and .hold when the last frame stays up with its hints. Everything in the frame is sized
+   in cqw, so it scales with it. */
+#teaser {
+  --ink: #1c1418;
+  --cream: #f4e7cc;
+  --amber: #f2a23a;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+  font-family: Fredoka, system-ui, sans-serif;
+  color: var(--cream);
+  cursor: none;
+  transition: opacity 0.6s ease;
+}
+#teaser.waiting, #teaser.ended.hold {
+  cursor: default;
+}
+#teaser.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+#teaser .tz-stage {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  /* a touch wider than 16:9: the clips carry thin black bars top and bottom, and this trims them off */
+  width: min(100vw, 100vh * 1920 / 1030);
+  aspect-ratio: 1920 / 1030;
+  overflow: hidden;
+  container-type: size;
+  background: #000;
+}
+#teaser video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* The ending waits on its first frame, on top of the heist but unseen, so the cut to it is instant. */
+#teaser .tz-ending {
+  visibility: hidden;
+}
+#teaser.cut .tz-ending {
+  visibility: visible;
+}
+/* dims the picture under the wordmark, heaviest where the letters sit */
+#teaser .tz-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(10, 6, 12, 0.3), rgba(10, 6, 12, 0.05) 45%, rgba(10, 6, 12, 0.78) 80%);
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  pointer-events: none;
+}
+#teaser.titled .tz-shade {
+  opacity: 1;
+}
+#teaser.waiting .tz-shade {
+  opacity: 0.75;
+}
+
+/* under the shelf, so the raccoon ends up sitting on its own sign */
+#teaser .tz-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4.6cqw;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  line-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+#teaser .tz-title svg {
+  width: 58cqw;
+  height: auto;
+  overflow: visible;
+  font: 700 160px Fredoka, system-ui, sans-serif;
+  filter: drop-shadow(0 0.7cqw 0.8cqw rgba(0, 0, 0, 0.6));
+}
+/* the same gold face, ink outline and bronze extrusion as the start screen's sign */
+#teaser .tz-wm-edge use {
+  fill: var(--ink);
+  stroke: var(--ink);
+  stroke-width: 9px;
+  stroke-linejoin: round;
+}
+#teaser .tz-wm-side use {
+  fill: url(#tz-wm-side);
+}
+#teaser .tz-wm-face {
+  fill: url(#tz-wm-face);
+  stroke: var(--ink);
+  stroke-width: 9px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+#teaser.titled .tz-title {
+  opacity: 1;
+  animation: tz-title-rise 0.7s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+#teaser .tz-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
+  align-items: center;
+  gap: 1cqw;
+  padding: 1.2cqw 2.8cqw 1.2cqw 2.2cqw;
+  border: 0.3cqw solid var(--ink);
+  border-radius: 5cqw;
+  background: linear-gradient(#fff7e0, #f6cf7a);
+  color: var(--ink);
+  font: 700 2.6cqw Fredoka, system-ui, sans-serif;
+  box-shadow: 0 0.6cqw 0 #6e3a14, 0 1.2cqw 2cqw rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+#teaser .tz-play svg {
+  width: 3cqw;
+  height: 3cqw;
+  fill: currentColor;
+}
+#teaser .tz-play:hover {
+  background: linear-gradient(#fffdf2, #f9da93);
+}
+#teaser .tz-play:active {
+  transform: translate(-50%, calc(-50% + 0.4cqw));
+  box-shadow: 0 0.2cqw 0 #6e3a14, 0 0.6cqw 1cqw rgba(0, 0, 0, 0.5);
+}
+#teaser .tz-play:focus-visible {
+  outline: 0.3cqw solid var(--amber);
+  outline-offset: 0.4cqw;
+}
+#teaser.waiting .tz-play {
+  display: inline-flex;
+}
+
+#teaser .tz-hint {
+  position: absolute;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  font: 600 1.5cqw Fredoka, system-ui, sans-serif;
+  text-shadow: 0 0.15cqw 0.4cqw rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+#teaser .tz-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6cqw;
+  height: 2.4cqw;
+  padding: 0 0.7cqw;
+  box-sizing: border-box;
+  border-radius: 0.6cqw;
+  background: #2b2830;
+  color: var(--cream);
+  font: inherit;
+  box-shadow: 0 0.25cqw 0 #120d14;
+}
+#teaser .tz-hint span {
+  opacity: 0.5;
+}
+#teaser .tz-skip {
+  right: 2cqw;
+  bottom: 1.8cqw;
+}
+#teaser.playing .tz-skip {
+  opacity: 0.55;
+}
+#teaser.waiting .tz-skip {
+  opacity: 0.9;
+}
+#teaser.titled .tz-skip {
+  opacity: 0;
+}
+#teaser .tz-after {
+  left: 50%;
+  bottom: 1.3cqw;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+#teaser.ended.hold .tz-after {
+  opacity: 1;
+}
+
+@keyframes tz-title-rise {
+  from { opacity: 0; transform: translateY(60%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #teaser.titled .tz-title { animation: none; }
+}

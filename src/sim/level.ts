@@ -23,7 +23,8 @@ export interface Prop { kind: 'cases' | 'crate' | 'barrel' | 'dolly' | 'mop' | '
 export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
 /** Powerups stay with you from night to night. */
-export type Powerup = 'tote' | 'sneakers' | 'shield';
+export type Powerup = 'tote' | 'sneakers' | 'shield' | 'candy';
+export type CritterKind = 'eagle' | 'owl' | 'snake';
 
 /** How far below its branch a hanging bottle's base sits. */
 export const HANG = 44;
@@ -65,6 +66,11 @@ export interface Level {
   faire?: boolean; // night 3: outdoors. Boards are branches, units are trunks, and bottles hang
   bales?: Rect[]; // hay: a bottle that lands on one doesn't break
   archers?: { x: number; cover: CoverKind }[];
+  circus?: boolean; // night 4: the big top. Bleacher rows are boards, king poles are units
+  clowns?: [number, number][]; // each clown's patrol, along the floor
+  critters?: { kind: CritterKind; x: number; y: number }[]; // perches; snakes sit in baskets on the floor
+  cannon?: { x: number; dir: 1 | -1; to: { x: number; y: number } };
+  rope?: { x1: number; x2: number; y: number }; // the tightrope, also a board
 }
 
 export function roofLevel(): Level {
@@ -152,7 +158,7 @@ function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y:
 
 /** The store for a night (1-based). */
 export function nightLevel(night: number): Level {
-  return night === 3 ? faireLevel() : night === 2 ? checkoutLevel() : storeLevel(1);
+  return night === 4 ? circusLevel() : night === 3 ? faireLevel() : night === 2 ? checkoutLevel() : storeLevel(1);
 }
 
 /**
@@ -281,6 +287,80 @@ function faireLevel(): Level {
     lights: [440, 945, 1400, 1930, 2415, 2885, 3280],
     bales,
     archers,
+  };
+}
+
+/**
+ * Night 4: the circus, inside the big top. Bleachers rise toward the tent wall at both ends, two king poles stand in
+ * between with a tightrope across their tops, and a cannon in the ring fires you to the far bleachers.
+ */
+function circusLevel(): Level {
+  const r = rng(4);
+  const floorY = 500;
+  const width = 4200;
+  const units: Unit[] = [];
+  const boards: Board[] = [];
+  // Each bleacher row is its own unit, so its front edge is a step you can hide behind.
+  const rows: [number, number, number][] = [
+    [40, 640, 420], [40, 550, 340], [40, 460, 260], [40, 370, 180],
+    [2900, 3500, 420], [2990, 3500, 340], [3080, 3500, 260], [3170, 3500, 180],
+  ];
+  for (const [x1, x2, y] of rows) {
+    boards.push({ x1, x2, y, unit: units.length });
+    units.push({ x: x1, w: x2 - x1, top: y });
+  }
+  const POLE = 20;
+  const poles: [number, [number, number][]][] = [
+    [1000, [[410, 70], [320, 65], [230, 65], [130, 80]]], // your cousin is up through the rip above this one
+    [2150, [[420, 70], [330, 65], [240, 65], [150, 75]]],
+  ];
+  const poleUnits: number[] = [];
+  for (const [cx, tiers] of poles) {
+    poleUnits.push(units.length);
+    for (const [y, half] of tiers) boards.push({ x1: cx - half, x2: cx + half, y, unit: units.length });
+    units.push({ x: cx - POLE / 2, w: POLE, top: Math.min(...tiers.map((t) => t[0])) });
+  }
+  const bottles = stockShelves(r, boards, { unit: poleUnits[0], y: 130 }, 4, (x, b) => poleUnits.includes(b.unit) && Math.abs(x - (units[b.unit].x + POLE / 2)) < 22);
+
+  const rope = { x1: 1080, x2: 2075, y: 150 };
+  boards.push({ ...rope, unit: -1 });
+  const counter = { x: 3640, y: 420, w: 300, h: 80 }; // concessions
+  const plush = { x: 2400, y: 450, w: 140, h: 50 }; // a heap of prize animals
+  boards.push({ x1: plush.x, x2: plush.x + plush.w, y: plush.y, unit: -1 });
+
+  return {
+    id: 'store',
+    circus: true,
+    width,
+    floorY,
+    ceilingY: 40,
+    solids: [{ x: 0, y: floorY, w: width, h: 40 }, counter],
+    boards,
+    climbables: [],
+    units,
+    bottles,
+    signs: [],
+    start: { x: 1000, y: 130 },
+    hole: { x: 955, y: 60, w: 90, h: 70 },
+    plush,
+    powerup: { kind: 'candy', x: 3570, y: 440, w: 34, h: 40 },
+    rack: { x: 3860, y: 362, w: 44, h: 58 },
+    counter,
+    door: { x: 4090, y: 400, w: 70, h: 100 },
+    bobRoute: [90, 4080],
+    lights: [330, 1000, 1580, 2150, 2700, 3300, 3800],
+    clowns: [[680, 1500], [1650, 2800], [2860, 3600]],
+    critters: [
+      { kind: 'owl', x: 330, y: 118 },
+      { kind: 'snake', x: 800, y: floorY },
+      { kind: 'snake', x: 1300, y: floorY },
+      { kind: 'eagle', x: 1600, y: 72 },
+      { kind: 'owl', x: 2620, y: 300 },
+      { kind: 'snake', x: 2760, y: floorY },
+      { kind: 'eagle', x: 3420, y: 80 },
+    ],
+    cannon: { x: 1580, dir: 1, to: { x: 3290, y: 260 } },
+    rope,
   };
 }
 

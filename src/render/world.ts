@@ -9,6 +9,7 @@ import { HANG } from '../sim/level';
 import { caseStack, checkoutBelt, drawPossum, tillRegister } from './checkout';
 import { drawBlasts, drawScorches, drawShells, drawTank } from './tank';
 import { drawPowerup, POWERUP_INFO } from './powerups';
+import { bigTop, bleachers, cannon, concessions, drawClown, drawCritter, drawPellet, drawPerch, drawSlicks, drawSpits, poles, spotlights } from './circus';
 import { drawArcher, drawArrows, drawBale, drawCover, drawFloaters, drawStall, drawStuck, drawTrees, faireBackdrop, COVER_H, torches } from './faire';
 
 const BOTTLE_GLASS = ['#a8562a', '#3f7d4a', '#9fc6d6', '#7a1f33', '#c9873a', '#5a3d78'];
@@ -56,12 +57,14 @@ export class WorldView {
     if (L.id === 'roof') this.roof(c, g, time);
     else if (L.id === 'crawl') this.crawl(c, g, time);
     else if (L.faire) this.faire(c, g, time);
+    else if (L.circus) this.circus(c, g, time);
     else this.store(c, g, time, keys);
 
     this.raccoon(c, g, R, time);
     if (L.id === 'store') {
       for (const b of g.bottles) {
-        if (b.state === 'air') drawBottle(c, b.x, b.y, b.kind, b.id, (time * 9 + b.id) % 6.28);
+        if (b.state === 'air' && b.owner === 'owl') drawPellet(c, b.x, b.y, time * 9);
+        else if (b.state === 'air') drawBottle(c, b.x, b.y, b.kind, b.id, (time * 9 + b.id) % 6.28);
         // Rolling: lying on its side, spinning along the lane.
         else if (b.state === 'rolling') drawBottle(c, b.x, b.y + (b.kind === 'mini' || b.kind === 'golden' ? 4 : 7), b.kind, b.id, Math.PI / 2 + b.x / 9);
       }
@@ -395,6 +398,35 @@ export class WorldView {
     }
   }
 
+  /** Night 4: inside the big top. */
+  private circus(c: Ctx, g: Game, time: number) {
+    const L = g.level;
+    const x0 = this.camX - 40;
+    const x1 = this.camX + WORLD_VIEW_W + 40;
+    bigTop(c, L, x0, x1, time, g.t / g.nightLength);
+    const h = L.hole!;
+    drawCousin(c, h.x + h.w / 2, L.ceilingY + 4, time, g);
+    for (const k of g.critters) drawPerch(c, k, L.floorY);
+    bleachers(c, L, x0, x1);
+    poles(c, L, time);
+    this.shelfBottles(c, g, time, x0, x1);
+    this.plushDisplay(c, g, time, 'PRIZES');
+    const pu = L.powerup!;
+    c.fillStyle = '#e6c25a';
+    c.fillRect(pu.x + pu.w / 2 - 2, pu.y - 30, 4, L.floorY - pu.y + 30);
+    c.fillRect(pu.x - 4, pu.y - 30, pu.w + 8, 4);
+    if (!g.has(pu.kind)) drawPowerup(c, pu.kind, pu.x + pu.w / 2, pu.y + 14, 1);
+    concessions(c, L.counter!);
+    this.miniRack(c, g, time);
+    if (L.cannon) cannon(c, L.cannon, L.floorY, time);
+    drawSlicks(c, g.slicks, L.floorY);
+    this.floorMarks(c, g, time, x0, x1);
+    for (const k of g.clowns) if (k.x > x0 - 60 && k.x < x1 + 60) drawClown(c, k, L.floorY, time);
+    for (const k of g.critters) drawCritter(c, k, L.floorY, time);
+    drawSpits(c, g.spits);
+    spotlights(c, L, time);
+  }
+
   /** Night 3: the faire in the woods. Same world as a store underneath: branches are boards and trunks are units. */
   private faire(c: Ctx, g: Game, time: number) {
     const L = g.level;
@@ -588,9 +620,12 @@ export class WorldView {
     if (B.state === 'outside') return;
     const L = g.level;
     const fy = L.floorY;
-    // On faire night he's in period garb: motley hose, a tunic, a feathered hat. He kept the flashlight.
+    // On faire night he's in period garb: motley hose, a tunic, a feathered hat. At the circus he's the ringmaster:
+    // white breeches, red tailcoat, top hat. He kept the flashlight both times.
     const garb = L.faire
       ? { legA: '#7a2f3a', legB: '#2f5a7a', body: '#a8843a', belt: '#4a2a1a', badge: '#f0d27a', cap: '#2f6a4a' }
+      : L.circus
+      ? { legA: '#ece4d2', legB: '#ded4c0', body: '#b5232f', belt: '#1d1a20', badge: '#e6c25a', cap: '#1d1a20' }
       : { legA: '#4b4a3a', legB: '#55543f', body: '#a89668', belt: '#3d3528', badge: '#cfa64a', cap: '#2c3a5c' };
     const o = g.beamOrigin();
     if (B.state === 'down') {
@@ -670,6 +705,11 @@ export class WorldView {
     c.stroke();
     fillRR(c, x - 14 + d * 2, fy - 106, 28, 10, 4, garb.cap);
     fillRR(c, x + (d > 0 ? 6 : -22), fy - 99, 16, 4, 2, garb.cap);
+    if (L.circus) {
+      // The top hat, with a gold band.
+      fillRR(c, x - 11 + d * 2, fy - 132, 22, 28, 3, garb.cap, C.ink, 1.5);
+      fillRR(c, x - 11 + d * 2, fy - 112, 22, 4, 1, '#e6c25a');
+    }
     if (L.faire) {
       // A very proud feather.
       c.strokeStyle = '#f4efe4';
@@ -720,11 +760,12 @@ export class WorldView {
     for (const lx of lights) {
       if (lx < x0 - 300 || lx > x0 + WORLD_VIEW_W + 380) continue;
       const pulse = 0.85 + 0.15 * Math.sin(time * 3 + lx);
+      if (L.circus) continue; // the big top draws its own spotlights
       glow(c, lx, L.faire ? L.floorY - 118 : L.ceilingY + 10, 260, lamp, (L.faire ? 0.3 : 0.22) * pulse);
     }
     glow(c, g.raccoon.x, g.raccoon.y - 14, 120, C.warm, 0.08);
     c.restore();
-    if (!L.faire) for (const lx of lights) {
+    if (!L.faire && !L.circus) for (const lx of lights) {
       fillRR(c, lx - 16, L.ceilingY, 32, 12, 4, '#3a1c18', C.ink, 1.5);
       ellipse(c, lx, L.ceilingY + 8, 9, 5, bulb);
     }
@@ -820,7 +861,7 @@ export class WorldView {
       x = Math.max(60, Math.min(WORLD_VIEW_W - 60, x)) * WORLD_SCALE;
       y *= WORLD_SCALE;
       c.globalAlpha = Math.min(1, s.ttl * 3);
-      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `${g.level.faire ? 'Sir Bob' : 'Officer Bob'}: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
+      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `${g.level.faire ? 'Sir Bob' : g.level.circus ? 'Ringmaster Bob' : 'Officer Bob'}: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
       bubble(c, label, x, y);
       c.globalAlpha = 1;
     }

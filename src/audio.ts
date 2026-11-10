@@ -171,7 +171,7 @@ export class Sound {
   play(e: SimEvent, g: Game | null = null) {
     if (!this.ctx) return;
     const x =
-      e.type === 'smash' || e.type === 'ring' || e.type === 'blast' || e.type === 'creak' || e.type === 'twang' || e.type === 'thunk' ? e.x
+      e.type === 'smash' || e.type === 'ring' || e.type === 'blast' || e.type === 'creak' || e.type === 'twang' || e.type === 'thunk' || e.type === 'honk' || e.type === 'screech' || e.type === 'spit' || e.type === 'cannon' || e.type === 'whoo' ? e.x
       : ['door', 'shout', 'mutter', 'lost', 'bobWindup', 'bobThrow'].includes(e.type) || (e.type === 'say' && e.who === 'bob') ? g?.bob.x ?? null
       : e.type === 'beep' || e.type === 'slurp' || e.type === 'siren' || e.type === 'aim' || e.type === 'shot' ? g?.scrub.x ?? null
       : e.type === 'hiss' ? g?.possum?.x ?? null
@@ -400,6 +400,32 @@ export class Sound {
         break;
       case 'fanfare':
         [523, 659, 784, 1047].forEach((f, i) => this.tone(f, i === 3 ? 0.42 : 0.12, 'square', 0.09, 1, i * 0.1));
+        break;
+      case 'honk':
+        // A clown's bicycle horn, twice.
+        [0, 0.22].forEach((d) => {
+          this.tone(330, 0.16, 'square', 0.22, 1.12, d);
+          this.tone(415, 0.16, 'square', 0.12, 1.12, d);
+        });
+        break;
+      case 'screech':
+        this.tone(2400, 0.55, 'sawtooth', 0.09, 0.55);
+        this.noise(0.4, 0.08, 4000);
+        break;
+      case 'whoo':
+        this.tone(420, 0.28, 'sine', 0.16, 0.9);
+        this.tone(380, 0.42, 'sine', 0.14, 0.85, 0.32);
+        break;
+      case 'spit':
+        this.noise(0.12, 0.2, 2500);
+        this.tone(900, 0.08, 'square', 0.06, 0.5);
+        break;
+      case 'splat':
+        this.noise(0.12, 0.16, 0, 0, 700);
+        break;
+      case 'cannon':
+        this.noise(0.9, 0.7, 0, 0, 900);
+        this.tone(60, 0.8, 'triangle', 0.6, 0.45);
         break;
       case 'lidReady':
         this.tone(1568, 0.3, 'triangle', 0.1, 1.02);

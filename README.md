@@ -3,7 +3,7 @@
 A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
 the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
 
-Nights 1 to 3 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
+Nights 1 to 4 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
 run ends on a total of all your nights.
 
 ## Running it
@@ -15,8 +15,13 @@ npm install
 npm run dev       # then open http://localhost:5173
 ```
 
-Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2` or `?night=3` to start
-on a later night, or `?training` to skip to the tutorial's practice store.
+The first time the game is opened it plays a 17 second teaser film (see `teaser/`); after that it only plays from
+**Watch Intro** on the menu. Esc, Enter or Space skips it. If the browser won't play sound without a click, it waits on
+a poster with a Play button. Clearing the site's storage (`plc.introSeen`) makes it play on start again.
+
+Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2`, `?night=3` or `?night=4` to start
+on a later night, or `?training` to skip to the tutorial's practice store. None of those play the teaser, and `?menu` opens
+on the menu without it.
 `npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
 
 ## How to play
@@ -123,6 +128,27 @@ cross open grass. Your cousin waits in the hollow at the top of the third tree.
 - **Pot lid:** on the rack near the mead stall. Blocks one arrow, then needs 20 s.
 - **Sir Bob** is in period garb and talks the part. He kept the flashlight. Numbers are in `ARCHER` and `SHIELD` in
   `src/config.ts`.
+
+### Night 4
+
+The circus, inside the big top. Bleachers rise toward the tent wall at both ends, and two striped king poles stand
+between them with a tightrope across their tops. Your cousin is up through a rip in the canvas above the first pole.
+
+- **Clowns** ride unicycles along the floor. One that sees you (or that you bump into) honks: a noise as big as the
+  siren, Bob called in early if he's not here yet, and every animal riled for 8 s, shooting twice as often. A bottle
+  knocks a clown off for 4 s.
+- **The animals:** an **eagle** on the rigging dives in a straight line at where you were when it locked on (the dotted
+  line goes solid), flattening Bob, clowns and bottles on any bleacher row it passes through. An **owl** on its perch
+  lobs pellets that hurt but leave no puddle; the owls watch the stands. A **snake** rears out of its basket and spits
+  along the floor only, leaving a green slick that makes you slide. Stunned animals can be hit with bottles; a snake only
+  while it's out.
+- **The cannon** in the ring: press E at it and it fires you across the tent onto the far bleachers. You can't steer,
+  and you knock bottles off whatever you fly past (hold E to scoop them). The bang is the second-biggest noise there is.
+- **The tightrope:** at Buzz 2 and up you can wobble off it, and it's a long way down.
+- **Cotton candy** on the stand by the concessions: sticky paws for the rest of the run. Hiccups and hits never make you
+  drop a bottle.
+- **Ringmaster Bob:** top hat, red tailcoat. "Ladies and gentlemen… a RACCOON!" Numbers are in `CLOWN`, `CRITTER`,
+  `CANNON`, `ROPE` and `SLICK` in `src/config.ts`.
 
 ### Powerups
 

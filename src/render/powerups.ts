@@ -7,6 +7,7 @@ export const POWERUP_INFO: Record<Powerup, { name: string; text: string }> = {
   tote: { name: 'Tote bag', text: 'Room for three more bottles.' },
   sneakers: { name: 'Sneakers', text: 'Run and climb faster while someone is onto you.' },
   shield: { name: 'Pot lid', text: 'Blocks one arrow, then needs 20 seconds.' },
+  candy: { name: 'Cotton candy', text: 'Sticky paws: hiccups and hits never make you drop a bottle.' },
 };
 
 export function drawPowerup(c: Ctx, kind: Powerup, x: number, y: number, s: number) {
@@ -14,7 +15,20 @@ export function drawPowerup(c: Ctx, kind: Powerup, x: number, y: number, s: numb
   c.translate(x, y);
   c.scale(s, s);
   if (kind === 'tote') tote(c);
-  else if (kind === 'shield') {
+  else if (kind === 'candy') {
+    c.fillStyle = '#e8d6b0';
+    c.beginPath();
+    c.moveTo(-5, 2);
+    c.lineTo(5, 2);
+    c.lineTo(0, 18);
+    c.closePath();
+    c.fill();
+    c.strokeStyle = C.ink;
+    c.lineWidth = 1.5;
+    c.stroke();
+    for (const [x, y, r] of [[-7, -4, 8], [6, -5, 8], [0, -11, 9], [0, -2, 9]] as const) ellipse(c, x, y, r, r, '#ff9ccf');
+    ellipse(c, -3, -10, 4, 3, '#ffd3ea');
+  } else if (kind === 'shield') {
     ellipse(c, 0, 0, 16, 16, '#aeb6bc');
     ellipse(c, -3, -4, 9, 8, '#d4dade');
     c.strokeStyle = C.ink;
