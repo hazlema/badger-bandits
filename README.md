@@ -3,8 +3,21 @@
 A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
 the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
 
-All 5 nights are built. Caught or not, the report card moves you on to the next night, and the
-run ends on a total of all your nights.
+All 5 nights are built. Climb out and the report card moves you on to the next night, and the run ends on a total
+of all your nights. Get caught and the run is over: the shelter's slip sends you back to the title.
+
+**Play it in your browser: https://badger-bandits.netlify.app**
+
+![The front door: the Badger Bandits sign over the counter, the bandit peeking over it, and the menu either side of his face](art/screenshots/title.png)
+
+| | |
+|---|---|
+| ![Night 1](art/screenshots/night-1.png) | ![Night 2](art/screenshots/night-2.png) |
+| **Night 1, the liquor store.** Shelves, a robot floor scrubber with a snitch-cam, and the tote bag. | **Night 2, the big store.** A cold blue night, an army tank on patrol, and sneakers. |
+| ![Night 3](art/screenshots/night-3.png) | ![Night 4](art/screenshots/night-4.png) |
+| **Night 3, Ye Olde Faire.** Bottle trees, archers behind the hay, and a pot lid for a shield. | **Night 4, the circus.** Clowns on unicycles, a tightrope, a human cannonball and cotton candy. |
+| ![Night 5](art/screenshots/night-5.png) | |
+| **Night 5, the Moon.** Low gravity, floating rocks, security satellites and a drone that flies your loot home. | |
 
 ## Running it
 
@@ -32,9 +45,22 @@ Get in, grab bottles, and **hand them up to your cousin at the ceiling hole**. H
 is safe. Then **climb out through the hole** before the night ends. The clock in the top right counts down to
 dawn (about 5 minutes on night 1, 6 on night 2). Get caught, or still be inside at dawn, and you lose everything you hadn't handed up.
 
-### Start Game or Tutorial
+### The menu
 
-The menu offers both. **Start Game** drops you straight into the store. **Tutorial** runs:
+Six choices, three on either side of the bandit's face (↑↓ along a side, ←→ across):
+
+- **Start Game** drops you straight into night 1.
+- **Pick a Night** starts a run from any of the five nights, holding the powerups of the nights before it.
+- **Tutorial**, below.
+- **Watch Intro** plays the intro film again.
+- **Controls** rebinds the keyboard: two keys per action, saved in the browser. A key you take is cleared from
+  wherever else it was. Esc, Enter, Tab, P, M, N and L are the menus' own and can't be bound.
+  Gamepad buttons are fixed.
+- **About**: some facts about the raccoons, and a link to Frosty's Corner.
+
+Each choice that opens a panel closes again with Esc, Start, or a click off it.
+
+**Tutorial** runs:
 
 1. **Roof:** run, jump the AC unit, climb the ivy trellis (hold ↑), and press **E** at the vent to pry it up.
 2. **Crawlspace:** press **E** at the wires to chew through them. That kills the store's power.
@@ -45,6 +71,8 @@ The menu offers both. **Start Game** drops you straight into the store. **Tutori
    Chalkboards on the wall explain the why. Finish them all and press ↑ at the hole to return to the menu.
 
 ### Controls
+
+The keyboard column is the default; Controls on the menu changes it.
 
 | | Keyboard | Gamepad |
 |---|---|---|

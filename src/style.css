@@ -214,19 +214,31 @@ html {
 #front.ready #front-prompt {
   display: none;
 }
+/* The menu: a column either side of the bandit's face (48rem to 80rem across). */
 #front-menu {
-  position: absolute;
-  left: 50%;
-  top: 25.6rem;
-  transform: translateX(-50%);
   display: none;
-  gap: 2rem;
-  white-space: nowrap;
 }
 #front.ready #front-menu {
-  display: flex;
+  display: block;
 }
-#front-menu button {
+.front-col {
+  position: absolute;
+  top: 27.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  white-space: nowrap;
+}
+.front-col.left {
+  right: 82rem;
+  align-items: flex-end;
+}
+.front-col.right {
+  left: 82rem;
+  align-items: flex-start;
+}
+#front-menu button,
+.front-panel button {
   margin: 0;
   padding: 0.5rem 2.4rem 0.7rem;
   border: 0.3rem solid transparent;
@@ -246,6 +258,190 @@ html {
   text-shadow: none;
   box-shadow: 0 0.4rem 0 var(--edge), 0 0 2.4rem rgba(242, 162, 58, 0.45);
 }
+/* While a panel is up the menu and the face step back under a shade. */
+#front.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgba(12, 8, 14, 0.62);
+}
+#front.panel #front-menu {
+  visibility: hidden;
+}
+
+/* A panel: a paper notice pinned over the counter, the same cream as the key tags. */
+.front-panel {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-0.6deg);
+  width: 76rem;
+  box-sizing: border-box;
+  padding: 2.8rem 4rem 2rem;
+  border-radius: 0.8rem 0.8rem 1.4rem 1.4rem;
+  background: #f1e4c6;
+  color: var(--edge);
+  box-shadow: 0 1.6rem 3rem rgba(0, 0, 0, 0.55), inset 0 0 0 0.3rem rgba(90, 58, 36, 0.25);
+}
+.front-panel[hidden] {
+  display: none;
+}
+.front-panel::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-left: -0.7rem;
+  border-radius: 50%;
+  background: #c8372a;
+  box-shadow: 0 0.3rem 0 #6e1d16;
+}
+.front-panel h2 {
+  margin: 0;
+  text-align: center;
+  font-size: 4rem;
+  font-weight: 700;
+}
+.front-panel-sub {
+  margin: 0.4rem 0 2rem;
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 500;
+  color: #6a4a32;
+}
+.front-panel-hint {
+  margin: 2rem 0 0;
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #6a4a32;
+}
+.front-panel kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+  height: 3rem;
+  padding: 0 0.8rem;
+  box-sizing: border-box;
+  border-radius: 0.7rem;
+  background: #2b2830;
+  color: var(--cream);
+  font: 600 1.4rem Fredoka, system-ui, sans-serif;
+  box-shadow: 0 0.3rem 0 #120d14;
+}
+.front-panel button {
+  color: var(--edge);
+  text-shadow: none;
+}
+.front-panel button.picked {
+  border-color: var(--edge);
+  background: var(--amber);
+  box-shadow: 0 0.4rem 0 var(--edge);
+}
+
+/* Pick a Night: five cards in a row. */
+.front-nights {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1.2rem;
+}
+.front-panel .front-nights button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1.4rem 0.6rem 1.2rem;
+  border-color: rgba(90, 58, 36, 0.35);
+  background: #e8d6b0;
+  font-size: 1.9rem;
+  line-height: 1.1;
+  white-space: normal;
+}
+.front-nights b {
+  font-size: 4.4rem;
+  line-height: 1;
+}
+.front-nights small {
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: #6a4a32;
+}
+
+/* Controls: an action, then its two keys. */
+.front-binds {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  column-gap: 1.2rem;
+  row-gap: 0.3rem;
+  font-size: 1.8rem;
+  font-weight: 600;
+}
+.front-panel .front-binds button {
+  min-width: 12rem;
+  padding: 0.1rem 1.2rem 0.2rem;
+  border-color: rgba(90, 58, 36, 0.35);
+  background: #2b2830;
+  color: var(--cream);
+  font-size: 1.7rem;
+}
+.front-panel .front-binds button.picked {
+  border-color: var(--edge);
+  background: var(--amber);
+  color: var(--edge);
+}
+.front-panel .front-binds button.listening {
+  background: var(--cream);
+  color: #c8372a;
+}
+.front-panel .front-binds .front-reset {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin-top: 1rem;
+  background: #e8d6b0;
+  color: var(--edge);
+  font-size: 1.8rem;
+}
+
+/* About: silly facts and the way to Frosty's Corner. */
+.front-about {
+  font-size: 1.9rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.front-about p {
+  margin: 1.2rem 0;
+}
+.front-about ul {
+  margin: 0;
+  padding-left: 2.4rem;
+}
+.front-about li {
+  margin: 0.6rem 0;
+}
+.front-about a {
+  display: table;
+  margin: 1.6rem auto 0;
+  padding: 0.6rem 2.4rem 0.8rem;
+  border: 0.3rem solid var(--edge);
+  border-radius: 1rem;
+  background: #e8d6b0;
+  color: var(--edge);
+  font-size: 2.4rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.front-about a.picked,
+.front-about a:hover {
+  background: var(--amber);
+  box-shadow: 0 0.4rem 0 var(--edge);
+}
+
 /* The bandit, peeking over the counter (the counter comes after it, so it hides the bandana). */
 #front img {
   position: absolute;
@@ -441,4 +637,15 @@ html {
 }
 @media (prefers-reduced-motion: reduce) {
   #front.fonts .front-sign, .front-sway, #front img { animation: none; }
+}
+#panel-controls {
+  width: 62rem;
+}
+.front-panel .front-nights button.picked {
+  border-color: var(--edge);
+  background: var(--amber);
+  box-shadow: 0 0.4rem 0 var(--edge);
+}
+.front-panel .front-nights button.picked small {
+  color: var(--edge);
 }

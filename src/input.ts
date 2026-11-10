@@ -1,36 +1,64 @@
 import { NO_INPUT, type Input } from './sim/game';
 
-// Keyboard, two hand positions: WASD + Space/E/F/Q/R, or arrows + Z/X/C/V/B.
+// Keyboard: two keys per action, rebindable from Controls on the menu (host, 2026-11-10). The defaults are the two
+// hand positions: arrows + Space/E/F/Q/R, or WASD + Z/X/C/V/B.
 //   jump Space/Z · grab E/X · throw F/C · switch Q/V · hoot R/B
-// Gamepad (standard mapping): stick or d-pad, A jump, X grab, B throw, LB/RB switch, Y hoot, Start pause.
-const KEYS: Record<string, keyof Input> = {
-  ArrowLeft: 'left', KeyA: 'left',
-  ArrowRight: 'right', KeyD: 'right',
-  ArrowUp: 'up', KeyW: 'up',
-  ArrowDown: 'down', KeyS: 'down',
-  Space: 'jump', KeyZ: 'jump',
-  KeyE: 'grab', KeyX: 'grab',
-  KeyF: 'throw', KeyC: 'throw',
-  KeyQ: 'swap', KeyV: 'swap',
-  KeyR: 'hoot', KeyB: 'hoot',
+// Gamepad (standard mapping, fixed): stick or d-pad, A jump, X grab, B throw, LB/RB switch, Y hoot, Start pause.
+export type Action = keyof Input;
+export type Bindings = Record<Action, [string | null, string | null]>;
+export const ACTIONS: { act: Action; label: string }[] = [
+  { act: 'left', label: 'Move left' },
+  { act: 'right', label: 'Move right' },
+  { act: 'up', label: 'Climb · Aim up' },
+  { act: 'down', label: 'Down · Drop' },
+  { act: 'jump', label: 'Jump' },
+  { act: 'grab', label: 'Grab · Drink' },
+  { act: 'throw', label: 'Throw' },
+  { act: 'swap', label: 'Switch' },
+  { act: 'hoot', label: 'Hoot' },
+];
+export const DEFAULT_KEYS: Bindings = {
+  left: ['ArrowLeft', 'KeyA'],
+  right: ['ArrowRight', 'KeyD'],
+  up: ['ArrowUp', 'KeyW'],
+  down: ['ArrowDown', 'KeyS'],
+  jump: ['Space', 'KeyZ'],
+  grab: ['KeyE', 'KeyX'],
+  throw: ['KeyF', 'KeyC'],
+  swap: ['KeyQ', 'KeyV'],
+  hoot: ['KeyR', 'KeyB'],
 };
+/** Keys the menus and the game already use for themselves (pause, powerups, mute, music, the night log), so they
+    can't be bound to an action. */
+export function reservedKey(code: string): boolean {
+  return ['Escape', 'Enter', 'Tab', 'KeyP', 'KeyM', 'KeyN', 'KeyL'].includes(code) || /^(Meta|OS|ContextMenu)/.test(code);
+}
+/** What to print on a key cap: ← for ArrowLeft, E for KeyE, L Shift for ShiftLeft. */
+export function keyName(code: string | null): string {
+  if (!code) return '—';
+  const arrows: Record<string, string> = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
+  if (arrows[code]) return arrows[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return `Num ${code.slice(6)}`;
+  const side = /^(Shift|Control|Alt)(Left|Right)$/.exec(code);
+  if (side) return `${side[2] === 'Left' ? 'L' : 'R'} ${side[1] === 'Control' ? 'Ctrl' : side[1]}`;
+  const named: Record<string, string> = { Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backspace: '⌫', CapsLock: 'Caps' };
+  return named[code] ?? code;
+}
 
 export class Controls {
+  private keys: Record<string, Action> = {};
   private held = new Set<keyof Input>();
   // A tap that goes down and up between two frames still counts once.
   private tapped = new Set<keyof Input>();
   private menuQueue: string[] = [];
   usingPad = false;
 
-  constructor() {
+  constructor(bindings: Bindings) {
+    this.bind(bindings);
     addEventListener('keydown', (e) => {
-      // Ctrl+D is the tester's every-powerup key; keep it from bookmarking the page or walking right.
-      if (e.ctrlKey && e.code === 'KeyD') {
-        e.preventDefault();
-        if (!e.repeat) this.menuQueue.push('CheatPowers');
-        return;
-      }
-      const k = KEYS[e.code];
+      const k = this.keys[e.code];
       if (k) {
         this.held.add(k);
         this.tapped.add(k);
@@ -40,10 +68,17 @@ export class Controls {
       if (!e.repeat) this.menuQueue.push(e.code);
     });
     addEventListener('keyup', (e) => {
-      const k = KEYS[e.code];
+      const k = this.keys[e.code];
       if (k) this.held.delete(k);
     });
     addEventListener('blur', () => this.held.clear());
+  }
+
+  /** Use these keys from now on. */
+  bind(bindings: Bindings) {
+    this.keys = {};
+    for (const [act, codes] of Object.entries(bindings) as [Action, (string | null)[]][]) for (const code of codes) if (code) this.keys[code] = act;
+    this.held.clear();
   }
 
   private padPrev: boolean[] = [];

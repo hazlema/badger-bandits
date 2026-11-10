@@ -75,22 +75,65 @@
         </div>
 
         <p id="front-prompt">Casing the joint…</p>
+        <!-- the menu, three a side of the bandit's face; ←→ crosses over, ↑↓ goes along a side -->
         <div id="front-menu">
-          <button type="button" id="front-start" class="picked">Start Game</button>
-          <button type="button" id="front-tutorial">Tutorial</button>
-          <button type="button" id="front-intro">Watch Intro</button>
+          <div class="front-col left">
+            <button type="button" id="front-start" class="picked">Start Game</button>
+            <button type="button" id="front-nights">Pick a Night</button>
+            <button type="button" id="front-tutorial">Tutorial</button>
+          </div>
+          <div class="front-col right">
+            <button type="button" id="front-intro">Watch Intro</button>
+            <button type="button" id="front-controls">Controls</button>
+            <button type="button" id="front-about">About</button>
+          </div>
+        </div>
+
+        <!-- the menu's panels: one at a time, a paper notice pinned up over the counter. main.ts fills the controls. -->
+        <div class="front-panel" id="panel-nights" hidden>
+          <h2>Pick a Night</h2>
+          <p class="front-panel-sub">You turn up with the powerups from the nights before.</p>
+          <div class="front-nights">
+            <button type="button" data-night="1"><b>1</b>The Liquor Store<small>robot scrubber · tote bag</small></button>
+            <button type="button" data-night="2"><b>2</b>The Big Store<small>army tank · sneakers</small></button>
+            <button type="button" data-night="3"><b>3</b>The Faire<small>archers · pot lid</small></button>
+            <button type="button" data-night="4"><b>4</b>The Circus<small>clowns · cotton candy</small></button>
+            <button type="button" data-night="5"><b>5</b>The Moon<small>satellites · drone</small></button>
+          </div>
+          <p class="front-panel-hint"><kbd>Esc</kbd> Back</p>
+        </div>
+        <div class="front-panel" id="panel-controls" hidden>
+          <h2>Controls</h2>
+          <p class="front-panel-sub">Pick a key to change it, then press the new one. Gamepad buttons stay put.</p>
+          <div class="front-binds"></div>
+          <p class="front-panel-hint"><kbd>Esc</kbd> Back</p>
+        </div>
+        <div class="front-panel" id="panel-about" hidden>
+          <h2>About</h2>
+          <div class="front-about">
+            <p><b>Badger Bandits</b> is a game about two raccoons. The authorities insist they are badgers.</p>
+            <ul>
+              <li>Officer Bob has worked animal control for 22 years and has correctly identified 0 animals.</li>
+              <li>No badgers were harmed in the making of this game. No badgers were involved at all.</li>
+              <li>The cousin does not help. The cousin holds the bag and offers opinions.</li>
+              <li>Please don't feed raccoons rum. They will want more, and they know where you live now.</li>
+            </ul>
+            <p>Made at Frosty's Corner, where there are more games where this came from.</p>
+            <a id="about-link" href="https://frostyscorner.info/" target="_blank" rel="noopener">Visit Frosty's Corner</a>
+          </div>
+          <p class="front-panel-hint"><kbd>Esc</kbd> Back</p>
         </div>
         <img src="./art/bandit-raccoon.webp" alt="A raccoon in a black bandit mask, peeking over the counter" />
 
         <div class="front-counter">
           <ul class="front-tags keys" aria-label="Keyboard controls">
-            <li><span><kbd>←</kbd><kbd>→</kbd></span>Move</li>
-            <li><span><kbd>↑</kbd></span>Climb</li>
-            <li><span><kbd class="wide">Space</kbd></span>Jump</li>
-            <li><span><kbd>E</kbd></span>Grab · Drink</li>
-            <li><span><kbd>F</kbd></span>Throw</li>
-            <li><span><kbd>Q</kbd></span>Switch</li>
-            <li><span><kbd>R</kbd></span>Hoot</li>
+            <li><span><kbd data-act="left">←</kbd><kbd data-act="right">→</kbd></span>Move</li>
+            <li><span><kbd data-act="up">↑</kbd></span>Climb</li>
+            <li><span><kbd data-act="jump" class="wide">Space</kbd></span>Jump</li>
+            <li><span><kbd data-act="grab">E</kbd></span>Grab · Drink</li>
+            <li><span><kbd data-act="throw">F</kbd></span>Throw</li>
+            <li><span><kbd data-act="swap">Q</kbd></span>Switch</li>
+            <li><span><kbd data-act="hoot">R</kbd></span>Hoot</li>
             <li><span><kbd>Esc</kbd></span>Pause</li>
             <li><span><kbd>P</kbd></span>Powerups</li>
           </ul>

@@ -329,6 +329,12 @@ const fmt = (n: number) => (Math.round(n * 10) / 10).toString();
 /* --------------------------------------------------------------- screens */
 
 /** Resume or Quit to title. No restart, so a night about to go wrong can't be undone. */
+/** The pause menu's buttons, in view coordinates: drawn here, and hit-tested by main.ts for the mouse. */
+export function pauseButtons(): { label: string; x: number; y: number; w: number; h: number }[] {
+  const y = (VIEW_H - 260) / 2;
+  return ['Resume', 'Quit to title'].map((label, i) => ({ label, x: VIEW_W / 2 - 120, y: y + 112 + i * 52 - 21, w: 240, h: 42 }));
+}
+
 export function drawPause(c: Ctx, choice: number, pad: boolean) {
   c.fillStyle = 'rgba(15,10,18,0.6)';
   c.fillRect(0, 0, VIEW_W, VIEW_H);
@@ -338,10 +344,10 @@ export function drawPause(c: Ctx, choice: number, pad: boolean) {
   const y = (VIEW_H - h) / 2;
   popup(c, x, y, w, h, -0.008);
   text(c, 'Paused', VIEW_W / 2, y + 48, 40, POPUP.ink, 'center', 700);
-  ['Resume', 'Quit to title'].forEach((label, i) => {
-    const by = y + 112 + i * 52;
+  pauseButtons().forEach(({ label, x: bx, y: top, w: bw, h: bh }, i) => {
+    const by = top + bh / 2;
     const on = i === choice;
-    fillRR(c, VIEW_W / 2 - 120, by - 21, 240, 42, 10, POPUP.well, on ? C.gold : POPUP.edge, on ? 3 : 2);
+    fillRR(c, bx, top, bw, bh, 10, POPUP.well, on ? C.gold : POPUP.edge, on ? 3 : 2);
     text(c, label, VIEW_W / 2, by, 20, on ? C.gold : POPUP.dim, 'center', 700);
     if (on) paw(c, VIEW_W / 2 - 92, by, 1, C.gold);
   });
@@ -470,10 +476,12 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
     text(c, 'CAUGHT', 0, 1, 34, withAlpha(GRADE_COLOUR.F, 0.95), 'center', 700);
     c.restore();
   }
-  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `A ${nextUp(r.night)} · Start for the title · Select for the log` : `Space ${nextUp(r.night)} · Esc for the title · L for the log`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+  const title = r.escaped ? (pad ? ' · Start for the title' : ' · Esc for the title') : '';
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `A ${nextUp(r)}${title} · Select for the log` : `Space ${nextUp(r)}${title} · L for the log`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
 }
 
-const nextUp = (night: number) => (night < NIGHTS.length ? `for night ${night + 1}` : 'for the run total');
+/** Caught ends the run, back to the title; climbed out goes on. */
+const nextUp = (r: { night: number; escaped: boolean }) => (!r.escaped ? 'for the title' : r.night < NIGHTS.length ? `for night ${r.night + 1}` : 'for the run total');
 
 export interface NightScore { night: number; score: number; grade: string; escaped: boolean }
 
@@ -535,5 +543,5 @@ function drawLog(c: Ctx, g: Game, time: number, pad: boolean) {
     ly += 22;
   }
   if (!g.log.length) text(c, 'Nothing happened. Suspicious.', VIEW_W / 2, y + h / 2, 16, dim, 'center', 500);
-  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `Select to flip back · A ${nextUp(r.night)}` : `L to flip back · Space ${nextUp(r.night)}`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
+  if (Math.floor(time * 2) % 2 === 0) text(c, pad ? `Select to flip back · A ${nextUp(r)}` : `L to flip back · Space ${nextUp(r)}`, VIEW_W / 2, y + h - 22, 16, dim, 'center', 600);
 }
