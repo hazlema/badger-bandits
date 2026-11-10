@@ -1,6 +1,6 @@
 // Draws the level and everyone in it, in world coordinates under a camera.
 
-import { BOB, BOB_THROW, NIGHT, NIGHTS, POST_GRACE, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
+import { BOB, BOB_THROW, NIGHT, NIGHTS, POST_GRACE, SAT, SCRUBBER, VIEW_H, WORLD_SCALE, WORLD_VIEW_W } from '../config';
 import type { Game, Raccoon } from '../sim/game';
 import { isSpecial, type ItemKind, type Level } from '../sim/level';
 import { bubble, C, ellipse, fillRR, glow, hash, text, withAlpha, type Ctx, mix } from './paint';
@@ -8,7 +8,8 @@ import { acUnit, building, chalkboard, crawlAttic, crawlBelow, crawlTunnel, floo
 import { HANG } from '../sim/level';
 import { caseStack, checkoutBelt, drawPossum, tillRegister } from './checkout';
 import { drawBlasts, drawScorches, drawShells, drawTank } from './tank';
-import { drawPowerup, POWERUP_INFO } from './powerups';
+import { drawDrone, drawPowerup, POWERUP_INFO } from './powerups';
+import { dronePad, drawSat, dutyFree, moonBackdrop, rocks } from './space';
 import { bigTop, bleachers, cannon, concessions, drawClown, drawCritter, drawPellet, drawPerch, drawSlicks, drawSpits, poles, spotlights } from './circus';
 import { drawArcher, drawArrows, drawBale, drawCover, drawFloaters, drawStall, drawStuck, drawTrees, faireBackdrop, COVER_H, torches } from './faire';
 
@@ -58,13 +59,23 @@ export class WorldView {
     else if (L.id === 'crawl') this.crawl(c, g, time);
     else if (L.faire) this.faire(c, g, time);
     else if (L.circus) this.circus(c, g, time);
+    else if (L.space) this.moon(c, g, time);
     else this.store(c, g, time, keys);
 
     this.raccoon(c, g, R, time);
+    const D = g.drone;
+    if (D && L.id === 'store') {
+      D.cargo.slice(0, 4).forEach((k, i) => drawBottle(c, D.x - 6 + i * 4, D.y + 14, k, i * 5 + 1, 0));
+      drawDrone(c, D.x, D.y + Math.sin(time * 4) * 2, time * 40, D.state !== 'dock' && Math.sin(time * 10) > 0);
+    }
     if (L.id === 'store') {
       for (const b of g.bottles) {
         if (b.state === 'air' && b.owner === 'owl') drawPellet(c, b.x, b.y, time * 9);
-        else if (b.state === 'air') drawBottle(c, b.x, b.y, b.kind, b.id, (time * 9 + b.id) % 6.28);
+        else if (b.state === 'air' && b.drift) {
+          // Floating loose: a slow tumble, and a glint when it's close enough to snatch.
+          if (b === g.looseBottle()) glow(c, b.x, b.y - 12, 26, C.gold, 0.55 + 0.2 * Math.sin(time * 8));
+          drawBottle(c, b.x, b.y, b.kind, b.id, (time * 1.3 + b.id) % 6.28);
+        } else if (b.state === 'air') drawBottle(c, b.x, b.y, b.kind, b.id, (time * 9 + b.id) % 6.28);
         // Rolling: lying on its side, spinning along the lane.
         else if (b.state === 'rolling') drawBottle(c, b.x, b.y + (b.kind === 'mini' || b.kind === 'golden' ? 4 : 7), b.kind, b.id, Math.PI / 2 + b.x / 9);
       }
@@ -366,6 +377,23 @@ export class WorldView {
     for (const s of g.spills) {
       if (Math.max(s.x, s.x0) < x0 || Math.min(s.x, s.x0) > x1) continue;
       const col = spillColour(s.kind, s.id);
+      if (g.level.space) {
+        // A floating blob, wobbling, with a shine; a ring round it when it's in reach to drink.
+        const r = s.kind === 'mini' ? 7 : 10;
+        const w = Math.sin(time * 3 + s.id) * 1.6;
+        if (s.kind === 'curacao') glow(c, s.x, s.y, 30, '#4fc3ff', 0.35);
+        ellipse(c, s.x, s.y + Math.sin(time * 1.4 + s.id) * 3, r + w, r - w, withAlpha(col, 0.85));
+        ellipse(c, s.x - r * 0.35, s.y - r * 0.35, r * 0.3, r * 0.22, withAlpha('#ffffff', 0.55));
+        ellipse(c, s.x + r + 4, s.y + 6 + Math.sin(time * 2 + s.id) * 4, 2.4, 2.4, withAlpha(col, 0.7));
+        if (s === g.spillHere()) {
+          c.strokeStyle = withAlpha(C.gold, 0.7 + 0.3 * Math.sin(time * 8));
+          c.lineWidth = 2;
+          c.beginPath();
+          c.arc(s.x, s.y, r + 7, 0, Math.PI * 2);
+          c.stroke();
+        }
+        continue;
+      }
       if (s.x - s.x0 > 4) {
         c.strokeStyle = withAlpha(col, 0.55);
         c.lineWidth = 3;
@@ -427,6 +455,59 @@ export class WorldView {
     spotlights(c, L, time);
   }
 
+  /** Night 5: the duty-free on the Moon. Rocks and girders are boards and units, floating under the dome. */
+  private moon(c: Ctx, g: Game, time: number) {
+    const L = g.level;
+    const x0 = this.camX - 40;
+    const x1 = this.camX + WORLD_VIEW_W + 40;
+    moonBackdrop(c, L, x0, x1, this.camX, time, g.t / g.nightLength);
+    const h = L.hole!;
+    drawCousin(c, h.x + h.w / 2, L.ceilingY + 4, time, g);
+    rocks(c, L, x0, x1, time);
+    dronePad(c, L, time, g.has('drone'));
+    const pu = L.powerup!;
+    if (!g.has(pu.kind)) drawPowerup(c, pu.kind, pu.x + pu.w / 2, pu.y + 22 + Math.sin(time * 2) * 3, 1.2);
+    this.shelfBottles(c, g, time, x0, x1);
+    this.plushDisplay(c, g, time, 'ALIENS');
+    dutyFree(c, L.counter!, L.door, time);
+    this.miniRack(c, g, time);
+    this.floorMarks(c, g, time, x0, x1);
+    this.sats(c, g, time);
+  }
+
+  /** The satellites' searchlights: straight down and swinging, stopped by rocks the same way the sim's sight is. */
+  private sats(c: Ctx, g: Game, time: number) {
+    const L = g.level;
+    for (const s of g.sats) {
+      if (s.x < this.camX - 500 || s.x > this.camX + WORLD_VIEW_W + 500) continue;
+      if (s.state !== 'down') {
+        const o = g.satEye(s);
+        const beam = g.satBeam(s);
+        const pts: { x: number; y: number }[] = [o];
+        for (let i = 0; i <= 24; i++) {
+          const a = beam - SAT.half + (2 * SAT.half * i) / 24;
+          const dx = Math.cos(a);
+          const dy = -Math.sin(a);
+          const { t } = castRay(L, o.x, o.y, dx, dy, SAT.range, true);
+          pts.push({ x: o.x + dx * t, y: o.y + dy * t });
+        }
+        const col = s.state === 'alarm' ? (Math.sin(time * 14) > 0 ? '#ff5a4a' : '#5a8aff') : '#fff0b0';
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        const gr = c.createRadialGradient(o.x, o.y, 3, o.x, o.y, SAT.range);
+        gr.addColorStop(0, withAlpha(col, 0.5));
+        gr.addColorStop(1, withAlpha(col, 0));
+        c.fillStyle = gr;
+        c.beginPath();
+        pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+        c.closePath();
+        c.fill();
+        c.restore();
+      }
+      drawSat(c, s, time);
+    }
+  }
+
   /** Night 3: the faire in the woods. Same world as a store underneath: branches are boards and trunks are units. */
   private faire(c: Ctx, g: Game, time: number) {
     const L = g.level;
@@ -462,7 +543,7 @@ export class WorldView {
     for (const b of g.bottles) {
       if (b.state !== 'shelf' || b.x < x0 || b.x > x1) continue;
       const hang = g.hanging(b);
-      const y = hang ? b.y + HANG : b.y;
+      const y = (hang ? b.y + HANG : b.y) - (g.level.space ? 3 + 2.5 * Math.sin(time * 1.7 + b.id) : 0); // on the Moon they hover
       if (hang) {
         c.strokeStyle = 'rgba(233,222,190,0.75)';
         c.lineWidth = 1.2;
@@ -619,13 +700,15 @@ export class WorldView {
     const B = g.bob;
     if (B.state === 'outside') return;
     const L = g.level;
-    const fy = L.floorY;
+    const fy = L.floorY - B.lift;
     // On faire night he's in period garb: motley hose, a tunic, a feathered hat. At the circus he's the ringmaster:
     // white breeches, red tailcoat, top hat. He kept the flashlight both times.
     const garb = L.faire
       ? { legA: '#7a2f3a', legB: '#2f5a7a', body: '#a8843a', belt: '#4a2a1a', badge: '#f0d27a', cap: '#2f6a4a' }
       : L.circus
       ? { legA: '#ece4d2', legB: '#ded4c0', body: '#b5232f', belt: '#1d1a20', badge: '#e6c25a', cap: '#1d1a20' }
+      : L.space
+      ? { legA: '#e8eaee', legB: '#d6d9df', body: '#eef0f4', belt: '#5a6070', badge: '#e64a3a', cap: '#c8ccd4' }
       : { legA: '#4b4a3a', legB: '#55543f', body: '#a89668', belt: '#3d3528', badge: '#cfa64a', cap: '#2c3a5c' };
     const o = g.beamOrigin();
     if (B.state === 'down') {
@@ -671,8 +754,18 @@ export class WorldView {
     const x = B.x;
     const d = B.dir;
     const moving = B.state === 'search' || B.state === 'investigate' || B.state === 'chase';
-    const ph = moving ? Math.sin(time * (B.state === 'chase' ? 12 : 6)) : 0;
-    ellipse(c, x, fy - 1, 26, 5, withAlpha('#000', 0.35));
+    const ph = moving ? Math.sin(time * (B.state === 'chase' ? 12 : 6)) * (L.space ? 0.4 : 1) : 0;
+    if (L.space) {
+      // The jetpack: a pack on his back and a flame under it, his shadow left on the deck below.
+      ellipse(c, x, L.floorY - 1, 26 - Math.min(16, B.lift / 12), 5, withAlpha('#000', 0.3));
+      const big = B.state === 'chase' || B.state === 'shout' ? 1.5 : 1;
+      for (let i = 0; i < 2; i++) {
+        const f = (10 + Math.sin(time * 40 + i) * 4) * big;
+        ellipse(c, x - d * 22 + (i ? 5 : -5), fy - 40 + f / 2, 3.5, f, withAlpha(i ? '#ffd25a' : '#ff8a3a', 0.85));
+      }
+      glow(c, x - d * 22, fy - 30, 40, '#ffb35a', 0.3);
+      fillRR(c, x - d * 22 - 9, fy - 82, 18, 40, 5, '#9aa2ae', C.ink, 2);
+    } else ellipse(c, x, fy - 1, 26, 5, withAlpha('#000', 0.35));
     // legs
     fillRR(c, x - 12 + ph * 5, fy - 40, 11, 38, 4, garb.legA, C.ink, 2);
     fillRR(c, x + 1 - ph * 5, fy - 40, 11, 38, 4, garb.legB, C.ink, 2);
@@ -721,6 +814,7 @@ export class WorldView {
     }
     ellipse(c, x + d * 8, fy - 91, 2, 2, C.ink);
     fillRR(c, x + d * 4 - 6, fy - 85, 12, 4, 2, '#6b4a30');
+    if (L.space) helmet(c, x + d * 2, fy - 94, 21);
     if (B.state === 'look' || B.state === 'confused') text(c, '?', x, fy - 122, 20, C.cream, 'center', 700);
     if (B.state === 'shout') text(c, '!', x, fy - 124, 26, C.red, 'center', 700);
     // flashlight arm
@@ -782,6 +876,7 @@ export class WorldView {
       cheeks: R.cheeks,
       carry: R.carry,
       sneakers: R.sprint,
+      suit: !!g.level.space,
     });
     if (R.state === 'ko') {
       // Seeing stars, cartoon-style: dazed, not passed out.
@@ -823,11 +918,12 @@ export class WorldView {
       else if (g.onPlush() && (g.bobInside || g.tutorial)) s = `${k.down} play dead`;
       else if (g.atBelt() && R.carry.length) s = `${k.grab} put on the belt`;
       else if (g.atTill()) s = `${k.grab} mash the till`;
-      else if (g.spills.some((sp) => Math.abs(sp.y - R.y) < 1 && R.grounded && Math.abs(sp.x - R.x) < 32)) s = `${k.grab} lap it up`;
+      else if (g.looseBottle()) s = `${k.grab} snatch it`;
+      else if (g.spillHere()) s = L.space ? `${k.grab} slurp it` : `${k.grab} lap it up`;
       else if (R.aimT !== null) s = `let go to lob · ${k.down} drop · ←/→ roll`;
       else if (g.highlighted()) s = `${k.grab} grab · hold ${k.throw} to throw`;
       else if (R.fizz > 0.2) s = `tap ${k.grab} to pop the cork`;
-      else if (L.powerup && !g.has(L.powerup.kind) && R.grounded && R.y === L.floorY && Math.abs(R.x - (L.powerup.x + L.powerup.w / 2)) < 40) s = `${k.grab} take the ${POWERUP_INFO[L.powerup.kind].name.toLowerCase()}`;
+      else if (L.powerup && !g.has(L.powerup.kind) && R.grounded && R.y === (L.powerup.on ?? L.floorY) && Math.abs(R.x - (L.powerup.x + L.powerup.w / 2)) < 40) s = `${k.grab} take the ${POWERUP_INFO[L.powerup.kind].name.toLowerCase()}`;
       else if (R.grounded && R.y === L.counter!.y && Math.abs(R.x - (L.rack!.x + L.rack!.w / 2)) < 50 && g.rack.stock > 0) s = `${k.grab} spin the mini-bottle rack`;
       else if (R.carry.length && R.grounded && Math.abs(R.vx) < 20) s = `${k.throw} throw · ${k.hoot} hoot${R.carry.length > 1 ? ` · ${k.swap} switch` : ''}`;
     } else if (L.id === 'roof' && L.vent && g.reaches(L.vent)) s = `${k.grab} pry up the vent`;
@@ -850,7 +946,7 @@ export class WorldView {
         y = Math.max(y, 120);
       } else if (s.who === 'bob') {
         x = g.bob.x - this.camX;
-        y = L.floorY - 126;
+        y = L.floorY - 126 - g.bob.lift;
       } else if (s.who === 'possum' && g.possum) {
         x = g.possum.x - this.camX;
         y = g.possum.y - 44;
@@ -861,7 +957,7 @@ export class WorldView {
       x = Math.max(60, Math.min(WORLD_VIEW_W - 60, x)) * WORLD_SCALE;
       y *= WORLD_SCALE;
       c.globalAlpha = Math.min(1, s.ttl * 3);
-      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `${g.level.faire ? 'Sir Bob' : g.level.circus ? 'Ringmaster Bob' : 'Officer Bob'}: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
+      const label = s.who === 'cousin' ? `Cousin: ${s.text}` : s.who === 'bob' ? `${g.level.faire ? 'Sir Bob' : g.level.circus ? 'Ringmaster Bob' : g.level.space ? 'Commander Bob' : 'Officer Bob'}: ${s.text}` : s.who === 'possum' ? `Possum: ${s.text}` : s.text;
       bubble(c, label, x, y);
       c.globalAlpha = 1;
     }
@@ -893,7 +989,7 @@ function castRay(L: Level, ox: number, oy: number, dx: number, dy: number, max: 
       const t = (px - ox) / dx;
       if (t <= 0.5 || t >= best) continue;
       const y = oy + dy * t;
-      if (y > u.top && y < L.floorY) {
+      if (y > u.top && y < (u.bottom ?? L.floorY)) {
         best = t;
         post = px;
       }
@@ -1081,7 +1177,7 @@ function drawCousin(c: Ctx, x: number, y: number, time: number, g: Game) {
   ellipse(c, x, yy + 8, 2.3, 1.8, C.ink);
 }
 
-export interface RaccoonLook { buzz: number; cheeks: boolean; carry: ItemKind[]; sneakers: number }
+export interface RaccoonLook { buzz: number; cheeks: boolean; carry: ItemKind[]; sneakers: number; suit?: boolean }
 
 export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: string, time: number, look: RaccoonLook) {
   c.save();
@@ -1116,6 +1212,7 @@ export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: 
   c.translate(0, -bounce);
   c.rotate(tilt);
   tail(c, -14, -14, time, pose === 'run' ? 1.6 : 0.6);
+  if (look.suit) fillRR(c, -12, -30, 9, 16, 3, '#c8ccd4', C.ink, 1.5); // the air tank
   // legs
   const legs = pose === 'climb' ? [[-9, 3], [9, -3]] : [[-10, run], [-4, -run], [6, run], [11, -run]];
   for (const [lx, ph] of legs) fillRR(c, lx - 2.8 + ph * 3, -9, 5.6, 9 + (pose === 'air' ? -2 : 0), 2.8, C.charcoal);
@@ -1164,6 +1261,21 @@ export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: 
     ellipse(c, hx + 6, hy + 4, 3.5, 2.5, withAlpha('#ff8aa0', 0.7));
   }
   if (pose === 'sip') ellipse(c, hx + 14, hy + 6, 2.5, 3.5, '#e07a8a');
+  if (look.suit) {
+    // A bendy straw out through the fishbowl, for slurping blobs.
+    c.strokeStyle = '#f4efe4';
+    c.lineWidth = 2.6;
+    c.beginPath();
+    c.moveTo(hx + 12, hy + 4);
+    c.lineTo(hx + 20, hy - 2);
+    c.lineTo(hx + 24, hy - 14);
+    c.stroke();
+    c.strokeStyle = '#e8463a';
+    c.setLineDash([2.5, 2.5]);
+    c.stroke();
+    c.setLineDash([]);
+    helmet(c, hx + 2, hy - 1, 16);
+  }
   c.restore();
   if (look.buzz >= 3 && pose !== 'sip') {
     for (let i = 0; i < 2; i++) {
@@ -1171,6 +1283,22 @@ export function drawRaccoon(c: Ctx, x: number, y: number, facing: 1 | -1, pose: 
       ellipse(c, x + facing * (12 + i * 6), y - 36 - t * 18, 2 + t * 2, 2 + t * 2, withAlpha('#f4f0ff', 0.6 * (1 - t)));
     }
   }
+}
+
+/** A fishbowl space helmet: clear glass with a shine and a collar. */
+function helmet(c: Ctx, x: number, y: number, r: number) {
+  ellipse(c, x, y, r, r, 'rgba(200,235,255,0.16)');
+  c.strokeStyle = 'rgba(230,246,255,0.85)';
+  c.lineWidth = 1.8;
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,0.7)';
+  c.lineWidth = 2.2;
+  c.beginPath();
+  c.arc(x, y, r - 4, Math.PI * 1.1, Math.PI * 1.45);
+  c.stroke();
+  fillRR(c, x - r * 0.7, y + r - 4, r * 1.4, 6, 3, '#c8ccd4', C.ink, 1.2);
 }
 
 function tail(c: Ctx, x: number, y: number, time: number, wag: number) {

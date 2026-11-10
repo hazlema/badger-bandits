@@ -8,6 +8,7 @@ export const POWERUP_INFO: Record<Powerup, { name: string; text: string }> = {
   sneakers: { name: 'Sneakers', text: 'Run and climb faster while someone is onto you.' },
   shield: { name: 'Pot lid', text: 'Blocks one arrow, then needs 20 seconds.' },
   candy: { name: 'Cotton candy', text: 'Sticky paws: hiccups and hits never make you drop a bottle.' },
+  drone: { name: 'Drone', text: 'When your paws are full, it flies the lot up to your cousin by itself.' },
 };
 
 export function drawPowerup(c: Ctx, kind: Powerup, x: number, y: number, s: number) {
@@ -15,6 +16,7 @@ export function drawPowerup(c: Ctx, kind: Powerup, x: number, y: number, s: numb
   c.translate(x, y);
   c.scale(s, s);
   if (kind === 'tote') tote(c);
+  else if (kind === 'drone') drawDrone(c, 0, 0, 0, false);
   else if (kind === 'candy') {
     c.fillStyle = '#e8d6b0';
     c.beginPath();
@@ -71,5 +73,35 @@ function shoe(c: Ctx, x: number, y: number, s: number) {
   fillRR(c, -12, 4, 25, 4.5, 2, '#f4efe4', C.ink, 1.4);
   c.fillStyle = '#f4efe4';
   for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 4, -3, 2, 3);
+  c.restore();
+}
+
+/** A little quadcopter with a basket slung under it. `spin` turns the rotors; `lit` blinks its light while it flies. */
+export function drawDrone(c: Ctx, x: number, y: number, spin: number, lit: boolean) {
+  c.save();
+  c.translate(x, y);
+  c.strokeStyle = C.ink;
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(-14, -6);
+  c.lineTo(14, -6);
+  c.stroke();
+  for (const sx of [-14, 14]) {
+    fillRR(c, sx - 2, -10, 4, 5, 1, '#5a6070');
+    const w = 9 * Math.abs(Math.cos(spin + sx));
+    ellipse(c, sx, -11, Math.max(2, w), 1.6, 'rgba(220,230,240,0.85)');
+  }
+  fillRR(c, -9, -9, 18, 9, 4, '#e8eaee', C.ink, 1.5);
+  ellipse(c, 0, -5, 3, 2.4, lit ? '#7dff9a' : '#2f6a40');
+  // the basket
+  c.strokeStyle = '#8a7a58';
+  c.lineWidth = 1.2;
+  c.beginPath();
+  c.moveTo(-6, 0);
+  c.lineTo(-8, 6);
+  c.moveTo(6, 0);
+  c.lineTo(8, 6);
+  c.stroke();
+  fillRR(c, -10, 6, 20, 9, 3, '#c8b68e', '#6a5a38', 1.5);
   c.restore();
 }

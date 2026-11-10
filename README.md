@@ -3,7 +3,7 @@
 A raccoon heist. You and your cousin are robbing the Ashland ABC store: you go in through the ceiling, pass
 the good bottles up to your cousin, and climb out before dawn or before Officer Bob from animal control nabs you.
 
-Nights 1 to 4 are built, of a planned 5. Caught or not, the report card moves you on to the next night, and the
+All 5 nights are built. Caught or not, the report card moves you on to the next night, and the
 run ends on a total of all your nights.
 
 ## Running it
@@ -19,7 +19,7 @@ The first time the game is opened it plays a 17 second teaser film (see `teaser/
 **Watch Intro** on the menu. Esc, Enter or Space skips it. If the browser won't play sound without a click, it waits on
 a poster with a Play button. Clearing the site's storage (`plc.introSeen`) makes it play on start again.
 
-Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2`, `?night=3` or `?night=4` to start
+Add `?store` to the URL (http://localhost:5173/?store) to skip the menu and start the night, `?night=2` to `?night=5` to start
 on a later night, or `?training` to skip to the tutorial's practice store. None of those play the teaser, and `?menu` opens
 on the menu without it.
 `npm run dev` also prints a network address, so you can play from another machine on the same Wi-Fi.
@@ -150,9 +150,28 @@ between them with a tightrope across their tops. Your cousin is up through a rip
 - **Ringmaster Bob:** top hat, red tailcoat. "Ladies and gentlemen… a RACCOON!" Numbers are in `CLOWN`, `CRITTER`,
   `CANNON`, `ROPE` and `SLICK` in `src/config.ts`.
 
+### Night 5
+
+The duty-free on the Moon. No shelves: bottles hover over floating rocks and girders under a glass dome, and your
+cousin waits at the airlock in the dome's rim at the far back.
+
+- **Low gravity:** you jump about 60% higher and hang in the air twice as long, and no fall knocks you out.
+- **Floating bottles:** a bottle you bump doesn't fall, it drifts off in a straight line until it hits a rock, the
+  dome or someone (Bob included). It never hurts you, and you can snatch it out of the air with Grab. A broken bottle
+  becomes a floating blob you can slurp midair with your straw.
+- **Security satellites** drift along under the dome, swinging a searchlight below them. One that sees you sets off
+  the alarm (calls Bob early, or pulls him over). Rocks block the light, so get under one. A bottle knocks a
+  satellite out for 5 s.
+- **Commander Bob** has a jetpack. He hovers while he searches, and in a chase he flies up toward you, slowly, so
+  a high rock only buys you a moment. Knock him down and he drops to the deck.
+- **The drone** is docked on its pad a hop from the airlock, since it's the last night (host). Once you have it, it
+  rides behind you, and the moment your paws are full it flies the whole load to your cousin by itself and comes back.
+  A load still in the air when the night ends counts if you climb out, and is lost if you're caught. Numbers are in
+  `SPACE`, `SAT` and `DRONE` in `src/config.ts`.
+
 ### Powerups
 
-Each night has one powerup on the rack by the counter, and you keep what you pick up for the rest of the run, whether you
+Each night has one powerup, on the rack by the counter (night 5's is on a pad by the airlock), and you keep what you pick up for the rest of the run, whether you
 climb out or get caught. Press **P** (Select on a pad) to see them all. Starting a new run clears them.
 
 ### Night 2

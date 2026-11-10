@@ -12,8 +12,8 @@ export const isSpecial = (kind: ItemKind): boolean => kind in SPECIALS;
 export interface Rect { x: number; y: number; w: number; h: number }
 /** One-way platform: stand on it, jump or climb up through it. */
 export interface Board { x1: number; x2: number; y: number; unit: number }
-/** A shelf unit: climbable from the floor to `top`; its end panels block Bob's beam. */
-export interface Unit { x: number; w: number; top: number }
+/** A shelf unit: climbable from the floor to `top`; its end panels block Bob's beam. A floating one (the Moon's rocks) blocks only down to `bottom`. */
+export interface Unit { x: number; w: number; top: number; bottom?: number }
 export interface BottleDef { x: number; y: number; kind: ItemKind; board: number }
 /** A wooden sign, on a post down to the ground, or chained to the ceiling if `hang` is set. */
 export interface Sign { x: number; y: number; text: string; hang?: boolean }
@@ -23,7 +23,7 @@ export interface Prop { kind: 'cases' | 'crate' | 'barrel' | 'dolly' | 'mop' | '
 export interface Poster { x: number; y: number; w: number; title: string; lines: string[] }
 
 /** Powerups stay with you from night to night. */
-export type Powerup = 'tote' | 'sneakers' | 'shield' | 'candy';
+export type Powerup = 'tote' | 'sneakers' | 'shield' | 'candy' | 'drone';
 export type CritterKind = 'eagle' | 'owl' | 'snake';
 
 /** How far below its branch a hanging bottle's base sits. */
@@ -50,7 +50,7 @@ export interface Level {
   tile?: Rect;
   hole?: Rect; // standing zone on the back shelf's top board
   plush?: Rect;
-  powerup?: Rect & { kind: Powerup }; // tonight's, on the rack near the counter
+  powerup?: Rect & { kind: Powerup; on?: number }; // tonight's, on the rack near the counter; `on` is what you stand on to take it, if not the floor
   rack?: Rect;
   counter?: Rect;
   door?: Rect;
@@ -71,6 +71,9 @@ export interface Level {
   critters?: { kind: CritterKind; x: number; y: number }[]; // perches; snakes sit in baskets on the floor
   cannon?: { x: number; dir: 1 | -1; to: { x: number; y: number } };
   rope?: { x1: number; x2: number; y: number }; // the tightrope, also a board
+  space?: boolean; // night 5: the Moon. Low gravity; boards are floating rocks and struts, units their bodies
+  struts?: number[]; // which units are girders rather than rocks (looks only)
+  sats?: { route: [number, number]; y: number }[]; // security satellites under the dome
 }
 
 export function roofLevel(): Level {
@@ -158,7 +161,7 @@ function stockShelves(r: () => number, boards: Board[], hole: { unit: number; y:
 
 /** The store for a night (1-based). */
 export function nightLevel(night: number): Level {
-  return night === 4 ? circusLevel() : night === 3 ? faireLevel() : night === 2 ? checkoutLevel() : storeLevel(1);
+  return night === 5 ? moonLevel() : night === 4 ? circusLevel() : night === 3 ? faireLevel() : night === 2 ? checkoutLevel() : storeLevel(1);
 }
 
 /**
@@ -361,6 +364,84 @@ function circusLevel(): Level {
     ],
     cannon: { x: 1580, dir: 1, to: { x: 3290, y: 260 } },
     rope,
+  };
+}
+
+/**
+ * Night 5: the duty-free on the Moon. No shelves: bottles float over rocks and girders hanging under the dome, and in low
+ * gravity you hop between them. Your cousin is at the airlock at the far back, and the drone is docked right beside it,
+ * since it's the last night and you'd never get to use it otherwise (host). Rocks as [centre, y, half width, girder?].
+ */
+function moonLevel(): Level {
+  const r = rng(5);
+  const floorY = 500;
+  const width = 4600;
+  const rocks: [number, number, number, boolean?][] = [
+    [230, 130, 80, true], // the airlock gantry: the hand-up
+    [110, 290, 80],
+    [330, 410, 80],
+    [620, 320, 100],
+    [760, 170, 90, true],
+    [900, 420, 90],
+    [1100, 280, 110],
+    [1320, 160, 100, true],
+    [1420, 400, 90],
+    [1640, 290, 120],
+    [1880, 180, 100],
+    [1960, 410, 90],
+    [2180, 300, 110, true],
+    [2420, 170, 100],
+    [2500, 420, 90],
+    [2720, 300, 120],
+    [2960, 180, 100, true],
+    [3040, 410, 90],
+    [3260, 290, 110],
+    [3500, 170, 100],
+    [3560, 420, 90],
+    [3780, 300, 100, true],
+  ];
+  const units: Unit[] = [];
+  const boards: Board[] = [];
+  const struts: number[] = [];
+  for (const [cx, y, half, girder] of rocks) {
+    if (girder) struts.push(units.length);
+    boards.push({ x1: cx - half, x2: cx + half, y, unit: units.length });
+    units.push({ x: cx - half, w: half * 2, top: y, bottom: y + (girder ? 14 : 26) });
+  }
+  const bottles = stockShelves(r, boards, { unit: 0, y: 130 }, 5);
+
+  const dock = { x1: 400, x2: 470, y: 270 }; // the drone's charging pad, a hop from the gantry
+  boards.push({ ...dock, unit: -1 });
+  const counter = { x: 4000, y: 420, w: 320, h: 80 }; // the duty-free till
+  const plush = { x: 1180, y: 450, w: 140, h: 50 }; // a bin of plush aliens
+  boards.push({ x1: plush.x, x2: plush.x + plush.w, y: plush.y, unit: -1 });
+
+  return {
+    id: 'store',
+    space: true,
+    width,
+    floorY,
+    ceilingY: 40,
+    solids: [{ x: 0, y: floorY, w: width, h: 40 }, counter],
+    boards,
+    climbables: [],
+    units,
+    struts,
+    bottles,
+    signs: [],
+    start: { x: 230, y: 130 },
+    hole: { x: 185, y: 60, w: 90, h: 70 },
+    plush,
+    powerup: { kind: 'drone', x: 418, y: dock.y - 40, w: 34, h: 40, on: dock.y },
+    rack: { x: 4220, y: 362, w: 44, h: 58 },
+    counter,
+    door: { x: 4490, y: 400, w: 70, h: 100 },
+    bobRoute: [90, 4480],
+    lights: [520, 1200, 1900, 2600, 3300, 4000],
+    sats: [
+      { route: [420, 2100], y: 84 },
+      { route: [2400, 4300], y: 84 },
+    ],
   };
 }
 

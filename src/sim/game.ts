@@ -2,7 +2,7 @@
 // and audio layers read state and the per-step `events` list.
 
 import {
-  ARCHER, BELT, BOB, CANNON, CLOWN, CRITTER, BOB_THROW, BUZZ, DT, FALL, FIZZ, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, NIGHTS, POSSUM, PRINTS, RACCOON, RACK, RING, ROPE, SCRUBBER, SHIELD, SIREN, SLICK, SNEAKERS, TANK,
+  ARCHER, BELT, BOB, CANNON, CLOWN, CRITTER, BOB_THROW, BUZZ, DRONE, DT, FALL, FIZZ, FLOW, GRADES, HIT, KNOCKDOWN, NAG_EVERY, NIGHT, NIGHTS, POSSUM, PRINTS, RACCOON, RACK, RING, ROPE, SAT, SCRUBBER, SHIELD, SIREN, SLICK, SNEAKERS, SPACE, TANK,
   POST_GRACE, SEA_LEGS, THROW, TILL, TUTORIAL,
 } from '../config';
 import { HANG, type CritterKind, type Powerup, crawlLevel, isSpecial, nightLevel, roofLevel, type ItemKind, type Level, type Rect } from './level';
@@ -34,7 +34,7 @@ export type SimEvent =
         | 'jump' | 'land' | 'grab' | 'sip' | 'hiccupWarn' | 'hiccup' | 'slip' | 'hit' | 'vent' | 'wires'
         | 'door' | 'shout' | 'mutter' | 'lost' | 'beep' | 'slurp' | 'spin' | 'golden' | 'tote'
         | 'playDead' | 'escaped' | 'throw' | 'roll' | 'bonk' | 'hoot' | 'swap' | 'seaLegs' | 'bluePaws' | 'ko' | 'knock'
-        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson' | 'pop' | 'mash' | 'till' | 'hiss' | 'clank' | 'aim' | 'shot' | 'sneakers' | 'yelp' | 'fanfare' | 'lidReady' | 'splat';
+        | 'bobWindup' | 'bobThrow' | 'siren' | 'lesson' | 'pop' | 'mash' | 'till' | 'hiss' | 'clank' | 'aim' | 'shot' | 'sneakers' | 'yelp' | 'fanfare' | 'lidReady' | 'splat' | 'drone';
     };
 
 export interface Raccoon {
@@ -86,6 +86,7 @@ export interface Bottle {
   owner?: 'bob' | 'possum' | 'owl'; // who threw it; it can't hit them
   lane?: { x1: number; x2: number; y: number; board: number }; // what a rolling bottle rolls on
   spot?: number; // which of the level's shelf spots it came from
+  drift?: boolean; // on the Moon: bumped loose, it floats off in a straight line until it hits something
 }
 export interface Spill { id: number; x: number; y: number; kind: ItemKind; x0: number; flow: number }
 export interface Print { x: number; y: number; age: number; facing: 1 | -1 }
@@ -109,6 +110,7 @@ export interface Bob {
   holding: ItemKind | null; // the bottle he's about to throw
   windT: number; // s left of the wind-up
   throwCd: number; // s until he can throw again
+  lift: number; // px his jetpack has him off the floor (the Moon only)
 }
 
 export interface Scrubber {
@@ -153,6 +155,19 @@ export interface Critter {
   to: { x: number; y: number }; // where an eagle dives
 }
 /** Snake spit, flying low along the floor. */
+export interface Sat {
+  x: number;
+  y: number;
+  dir: 1 | -1;
+  route: [number, number];
+  state: 'scan' | 'alarm' | 'down';
+  t: number;
+  cd: number; // s before it can raise the alarm again
+  sweepT: number;
+}
+/** Night 5's powerup. Docked, it follows you; when your paws are full it flies the lot up to your cousin. */
+export interface Drone { x: number; y: number; state: 'dock' | 'out' | 'back'; cargo: ItemKind[] }
+
 export interface Spit { x: number; y: number; vx: number; left: number; spent: boolean }
 
 export interface Shell { x: number; y: number; vx: number; vy: number; spent: boolean }
@@ -194,6 +209,7 @@ type AirHit =
   | { what: 'archer'; archer: Archer }
   | { what: 'clown'; clown: Clown }
   | { what: 'critter'; critter: Critter }
+  | { what: 'sat'; sat: Sat }
   | { what: 'bale'; y: number }
   | { what: 'display'; y: number }
   | { what: 'solid'; y: number };
@@ -248,6 +264,28 @@ const BOB_CIRCUS: Record<string, string> = {
   'Come down here, you!': "Show's over, come down!",
   'Take THAT, trash panda!': 'Take a bow, trash panda!',
 };
+/** And in a space suit. */
+const BOB_SPACE: Record<string, string> = {
+  'HEY! Raccoon!': 'Houston, we have a RACCOON!',
+  'What was that?': 'Control, I heard something.',
+  'Animal control! Anybody in here?': 'Lunar Animal Control! Anybody up here?',
+  'Alarm! Animal control, coming through!': 'Alarm! Lunar Animal Control, inbound!',
+  'Ow! Get back here!': 'Ow! Come back here, space bandit!',
+  'Ow! Who threw that?!': 'Who threw that?! In SPACE?!',
+  "Huh. Where'd it go…": 'Lost visual. Where did it go…',
+  '…just a stuffed one. Ugly little thing.': '…just a plush alien. Ugly little thing.',
+  'OOF!': 'OOF! Mayday!',
+  'Get down from there!': 'Get off that rock!',
+  'Come down here, you!': 'Return to base, you!',
+  'Take THAT, trash panda!': 'Take THAT, space panda!',
+};
+const POWERUP_LINES: Record<Powerup, string> = {
+  tote: 'Tote bag! Room for three more.',
+  sneakers: 'Sneakers! For when things get hairy.',
+  shield: 'A pot lid! Fit for a knight.',
+  candy: 'Cotton candy! …now everything sticks to me.',
+  drone: 'A drone! Fill my paws and it does the climbing.',
+};
 const QUESTS = [
   'Well fought, noble cuz! Another quest awaits!',
   'Huzzah! The hollow grows fat with plunder!',
@@ -284,6 +322,8 @@ export class Game {
   critters: Critter[] = [];
   spits: Spit[] = [];
   slicks: { x: number; age: number }[] = [];
+  sats: Sat[] = [];
+  drone: Drone | null = null;
   alertT = 0; // s the circus animals stay riled after a honk
   private cannonFlight = false;
   private quests = 0; // quest speeches given
@@ -329,7 +369,7 @@ export class Game {
     if (this.has('tote')) this.raccoon.cap += RACCOON.toteExtra;
     this.bob = {
       state: 'outside', x: 0, dir: -1, goal: 0, t: 0, sweepT: 0, beam: 0, lostT: 0, target: 0, mutterCd: 0,
-      wasChasing: false, holding: null, windT: 0, throwCd: 0,
+      wasChasing: false, holding: null, windT: 0, throwCd: 0, lift: 0,
     };
     this.scrub = {
       x: 0, dir: 1, state: 'patrol', target: 0, t: 0, beepT: 4, spill: 0, alarmCd: 0,
@@ -359,6 +399,17 @@ export class Game {
   get bobDue(): number {
     return this.nightLength * NIGHT.bobAt;
   }
+  /** Moon gravity on night 5. */
+  get gravity(): number {
+    return this.level.space ? SPACE.gravity : RACCOON.gravity;
+  }
+  get maxFall(): number {
+    return this.level.space ? SPACE.maxFall : RACCOON.maxFall;
+  }
+  /** Where Bob's boots are: the floor, or up on his jetpack. */
+  get bobFeet(): number {
+    return this.level.floorY - this.bob.lift;
+  }
   has(p: Powerup): boolean {
     return this.powerups.includes(p);
   }
@@ -366,7 +417,7 @@ export class Game {
   get inDanger(): boolean {
     const S = this.scrub;
     return this.bob.state === 'chase' || this.bob.state === 'shout' || S.state === 'alarm' || S.aimT > 0 || this.archers.some((a) => a.state === 'draw')
-      || this.clowns.some((c) => c.state === 'honk') || this.critters.some((c) => c.state === 'wind' || c.state === 'dive');
+      || this.clowns.some((c) => c.state === 'honk') || this.critters.some((c) => c.state === 'wind' || c.state === 'dive') || this.sats.some((s) => s.state === 'alarm');
   }
   get capacity(): number {
     return this.raccoon.cap;
@@ -408,8 +459,7 @@ export class Game {
   }
 
   /** Your paws reach safety: specials count toward 100%, anything else is a bonus point. Returns the specials. */
-  private turnIn(): number {
-    const carry = this.raccoon.carry;
+  private turnIn(carry: ItemKind[] = this.raccoon.carry): number {
     const specials = carry.filter(isSpecial).length;
     this.specials += specials;
     this.bonus += carry.length - specials;
@@ -445,12 +495,14 @@ export class Game {
       else {
         if (this.level.archers) this.updateArchers(dt);
         else if (this.level.circus) this.updateCircus(dt);
+        else if (this.level.space) this.updateSats(dt);
         else {
           this.updateScrubber(dt);
           this.updateShells(dt);
         }
         this.updateBob(dt);
         this.updatePossum(dt);
+        this.updateDrone(dt);
       }
       if (this.over) return;
       if (!this.dawnWarned && this.t >= this.nightLength - 30) {
@@ -599,9 +651,9 @@ export class Game {
         if (R.vx < target) R.vx = Math.min(target, R.vx + a * dt);
         else if (R.vx > target) R.vx = Math.max(target, R.vx - a * dt);
       }
-      R.vy = Math.min(RACCOON.maxFall, R.vy + RACCOON.gravity * dt);
+      R.vy = Math.min(this.maxFall, R.vy + this.gravity * dt);
       if (free && edge.jump && R.grounded) {
-        R.vy = -RACCOON.jumpSpeed;
+        R.vy = -(L.space ? SPACE.jumpSpeed : RACCOON.jumpSpeed);
         R.vx *= 1 + 0.1 * wob; // drunk jumps overshoot
         R.grounded = false;
         this.emit({ type: 'jump' });
@@ -772,7 +824,7 @@ export class Game {
         R.vx *= 0.3;
       }
       this.emit({ type: 'land' });
-      if (R.y - R.peakY >= FALL.koHeight) this.knockOut();
+      if (R.y - R.peakY >= FALL.koHeight && !L.space) this.knockOut(); // Moon falls are soft
     }
   }
 
@@ -908,19 +960,24 @@ export class Game {
     }
     if (L.cannon && this.onFloorLevel(L.floorY) && Math.abs(R.x - L.cannon.x) < CANNON.reach) return this.fireCannon();
     const prize = L.powerup;
-    if (prize && !this.has(prize.kind) && this.onFloorLevel(L.floorY) && this.near(prize, R.x, 22)) {
+    if (prize && !this.has(prize.kind) && this.onFloorLevel(prize.on ?? L.floorY) && this.near(prize, R.x, 22)) {
       this.powerups.push(prize.kind);
+      if (prize.kind === 'drone') this.drone = { x: prize.x + prize.w / 2, y: prize.y + 12, state: 'dock', cargo: [] };
       this.emit({ type: 'tote' });
       if (prize.kind === 'tote') {
         R.cap += RACCOON.toteExtra;
         this.learn('tote');
         this.say('raccoon', 'Tote bag! Room for three more.', 2.2);
-      } else this.say('raccoon', prize.kind === 'sneakers' ? 'Sneakers! For when things get hairy.' : prize.kind === 'shield' ? 'A pot lid! Fit for a knight.' : 'Cotton candy! …now everything sticks to me.', 2.2);
+      } else this.say('raccoon', POWERUP_LINES[prize.kind], 2.2);
       return;
     }
-    const spill = this.spills
-      .filter((s) => this.onFloorLevel(s.y) && Math.abs(s.x - R.x) < 32)
-      .sort((a, b) => Math.abs(a.x - R.x) - Math.abs(b.x - R.x))[0];
+    const loose = this.looseBottle();
+    if (loose) {
+      if (R.carry.length >= R.cap) return this.say('raccoon', 'Paws full.', 1.2);
+      this.take(loose);
+      return;
+    }
+    const spill = this.spillHere();
     if (spill) {
       this.spills = this.spills.filter((s) => s !== spill);
       this.setBuzz(R.buzz + 1);
@@ -944,6 +1001,24 @@ export class Game {
       return;
     }
     if (R.carry.includes('champagne')) this.popArm = 0;
+  }
+
+  /** The spill you can lap up from where you are: a puddle at your feet, or on the Moon a blob floating by your head. */
+  spillHere(): Spill | undefined {
+    const R = this.raccoon;
+    const space = this.level.space;
+    const d = (s: Spill) => (space ? Math.hypot(s.x - R.x, s.y - (R.y - R.h / 2)) : Math.abs(s.x - R.x));
+    return this.spills
+      .filter((s) => (space ? d(s) < SPACE.blobReach : this.onFloorLevel(s.y) && d(s) < 32))
+      .sort((a, b) => d(a) - d(b))[0];
+  }
+
+  /** On the Moon: a bottle drifting past within reach, to snatch out of the air. */
+  looseBottle(): Bottle | null {
+    const R = this.raccoon;
+    if (!this.level.space || R.state !== 'move') return null;
+    const d = (b: Bottle) => Math.hypot(b.x - R.x, b.y - 12 - (R.y - R.h / 2));
+    return this.bottles.filter((b) => b.state === 'air' && b.drift && d(b) < RACCOON.reach + 4).sort((p, q) => d(p) - d(q))[0] ?? null;
   }
 
   private take(b: Bottle) {
@@ -1108,7 +1183,7 @@ export class Game {
   }
 
   private lobSpeed(dist: number, angle = THROW.lobAngle): number {
-    return Math.sqrt((dist * RACCOON.gravity) / Math.sin(2 * angle));
+    return Math.sqrt((dist * this.gravity) / Math.sin(2 * angle));
   }
 
   /** Where a lob would leave your paws, and how fast, if you let go now. */
@@ -1131,7 +1206,7 @@ export class Game {
     const pts = [{ x, y }];
     for (let i = 1; i < 240; i++) {
       const py = y;
-      vy = Math.min(RACCOON.maxFall, vy + RACCOON.gravity * DT);
+      vy = Math.min(this.maxFall, vy + this.gravity * DT);
       x += vx * DT;
       y += vy * DT;
       if (y < this.level.ceilingY) vy = Math.abs(vy) * 0.3;
@@ -1180,6 +1255,15 @@ export class Game {
     if (this.hanging(b)) b.y += HANG;
     b.state = 'air';
     b.safeT = THROW.selfSafe;
+    if (this.level.space) {
+      // No gravity to speak of: off it floats in a straight line.
+      const [lo, hi] = SPACE.drift;
+      b.drift = true;
+      b.vx = dir * (lo + this.rand() * (hi - lo));
+      b.vy = -10 - this.rand() * 30;
+      this.emit({ type: 'knock' });
+      return;
+    }
     b.vx = dir * (50 + this.rand() * 90);
     b.vy = -120 - this.rand() * 80;
     this.emit({ type: 'knock' });
@@ -1196,39 +1280,51 @@ export class Game {
   }
 
   private fly(b: Bottle, dt: number) {
+    const L = this.level;
     b.safeT = Math.max(0, b.safeT - dt);
-    b.vy = Math.min(RACCOON.maxFall, b.vy + RACCOON.gravity * dt);
+    if (!b.drift) b.vy = Math.min(this.maxFall, b.vy + this.gravity * dt);
     const prev = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    if (b.y < this.level.ceilingY) b.vy = Math.abs(b.vy) * 0.3;
-    if (b.x < 0 || b.x > this.level.width) b.vx = -b.vx * 0.4;
-    const hit = this.airHit(b.x, prev, b.y, b.safeT, b.owner);
+    if (b.drift) {
+      // A drifting bottle goes until it meets the dome, the floor, a rock or someone. It never hurts you: grab it.
+      const mid = b.y - 12;
+      const rock = L.units.some((u) => u.bottom !== undefined && b.x > u.x && b.x < u.x + u.w && mid > u.top && mid < u.bottom);
+      if (rock || b.x < 4 || b.x > L.width - 4 || b.y - 24 < L.ceilingY) return this.smash(b, b.y);
+    } else {
+      if (b.y < L.ceilingY) b.vy = Math.abs(b.vy) * 0.3;
+      if (b.x < 0 || b.x > L.width) b.vx = -b.vx * 0.4;
+    }
+    const hit = this.airHit(b.x, prev, b.y, b.drift ? 1 : b.safeT, b.owner);
     if (!hit) return;
     // A bottle that hits someone or something damages it; one that hits nothing makes noise.
     switch (hit.what) {
       case 'raccoon':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.hit(b.vx >= 0 ? 1 : -1, b.owner === 'bob' ? "Bob's bottle" : b.owner === 'possum' ? "the possum's can" : b.owner === 'owl' ? 'an owl pellet' : 'a falling bottle');
         break;
       case 'possum':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.soakPossum();
         break;
       case 'bob':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.knockBob();
         break;
       case 'clown':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.knockClown(hit.clown);
         break;
       case 'critter':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.knockCritter(hit.critter);
         break;
+      case 'sat':
+        this.smash(b, this.brokeAt(b), 0);
+        this.knockSat(hit.sat);
+        break;
       case 'archer':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.knockArcher(hit.archer);
         this.say('cousin', 'Chrr-chrr! Bullseye!', 1.8);
         break;
@@ -1245,12 +1341,12 @@ export class Game {
         break;
       }
       case 'scrubber':
-        this.smash(b, this.surfaceBelow(b.x, b.y), 0);
+        this.smash(b, this.brokeAt(b), 0);
         this.knockScrubber();
         break;
       case 'display':
         this.plushPuff = 0.8;
-        this.smash(b, this.surfaceBelow(b.x, b.y), RING.biggest, hit.y);
+        this.smash(b, this.brokeAt(b), RING.biggest, hit.y);
         this.say('cousin', 'Chrrr! Right in the display!', 2);
         break;
       case 'solid':
@@ -1267,7 +1363,8 @@ export class Game {
     if (L.id === 'store') {
       if (safeT <= 0 && R.state !== 'playdead' && inside(R.x - R.w / 2, R.y - R.h, R.w, R.h)) return { what: 'raccoon' };
       const B = this.bob;
-      if (owner !== 'bob' && this.bobInside && B.state !== 'down' && inside(B.x - BOB.w / 2, L.floorY - BOB.h, BOB.w, BOB.h)) return { what: 'bob' };
+      if (owner !== 'bob' && this.bobInside && B.state !== 'down' && inside(B.x - BOB.w / 2, this.bobFeet - BOB.h, BOB.w, BOB.h)) return { what: 'bob' };
+      for (const s of this.sats) if (s.state !== 'down' && inside(s.x - 24, s.y - 14, 48, 30)) return { what: 'sat', sat: s };
       const S = this.scrub;
       const box = this.scrubBox;
       if (S.state !== 'down' && inside(S.x - box.w / 2, L.floorY - box.h, box.w, box.h)) return { what: 'scrubber' };
@@ -1285,6 +1382,11 @@ export class Game {
       if (x >= s.x && x <= s.x + s.w && y0 <= s.y && y1 >= s.y) return { what: 'solid', y: s.y };
     }
     return null;
+  }
+
+  /** Where a bottle that hit someone ends up: on the floor below, or on the Moon right there in the air. */
+  private brokeAt(b: Bottle): number {
+    return this.level.space ? b.y : this.surfaceBelow(b.x, b.y);
   }
 
   /** The solid surface under x (the floor, or the counter top). */
@@ -1332,7 +1434,7 @@ export class Game {
         b.vx *= THROW.rollPinSlow;
       }
       const B = this.bob;
-      if (this.bobInside && B.state !== 'down' && Math.abs(b.x - B.x) < BOB.w / 2) {
+      if (this.bobInside && B.state !== 'down' && B.lift < 8 && Math.abs(b.x - B.x) < BOB.w / 2) {
         this.knockBob();
         b.vx *= THROW.rollPinSlow;
       }
@@ -1366,9 +1468,10 @@ export class Game {
       this.specialsBroken++;
       this.note('A special smashed: no 100% tonight');
     }
-    const flows = y === this.level.floorY && BIG.includes(b.kind);
+    const space = !!this.level.space; // on the Moon a spill is a floating blob, there to be drunk midair
+    const flows = !space && y === this.level.floorY && BIG.includes(b.kind);
     const flow = flows ? FLOW.min + this.rand() * (FLOW.max - FLOW.min) : 0;
-    this.spills.push({ id: this.nextId++, x: b.x, y, kind: b.kind, x0: b.x, flow });
+    this.spills.push({ id: this.nextId++, x: b.x, y: space ? y - SPACE.blobUp : y, kind: b.kind, x0: b.x, flow });
     this.emit({ type: 'smash', x: b.x, y, kind: b.kind });
     this.shake = Math.max(this.shake, b.kind === 'mini' ? 0.25 : 0.45);
     const nag = ++this.smashRun % NAG_EVERY === 0;
@@ -1412,7 +1515,7 @@ export class Game {
       this.emit({ type: 'beep' });
     }
     const B = this.bob;
-    if (['search', 'look', 'confused', 'investigate'].includes(B.state) && Math.hypot(B.x - x, floor - 60 - y) <= r) {
+    if (['search', 'look', 'confused', 'investigate'].includes(B.state) && Math.hypot(B.x - x, this.bobFeet - 60 - y) <= r) {
       const [a, b] = this.level.bobRoute!;
       B.state = 'investigate';
       B.target = Math.max(a, Math.min(b, x));
@@ -1769,7 +1872,7 @@ export class Game {
       const dy = R.y - R.h / 2 - hy;
       const O = CRITTER.owl;
       const T = Math.max(O.minFlight, Math.min(O.maxFlight, Math.abs(dx) / O.speed));
-      const vy = (dy - 0.5 * RACCOON.gravity * T * T) / T;
+      const vy = (dy - 0.5 * this.gravity * T * T) / T;
       this.bottles.push({ id: this.nextId++, x: hx, y: hy, kind: 'can', board: -1, state: 'air', vx: dx / T, vy, safeT: 0, owner: 'owl' });
       this.emit({ type: 'throw' });
     } else {
@@ -1855,7 +1958,7 @@ export class Game {
     const T = CANNON.flight;
     R.x = k.x;
     R.vx = (k.to.x - k.x) / T;
-    R.vy = (k.to.y - L.floorY - 0.5 * RACCOON.gravity * T * T) / T;
+    R.vy = (k.to.y - L.floorY - 0.5 * this.gravity * T * T) / T;
     R.grounded = false;
     R.ground = null;
     R.rocketT = T + 0.4;
@@ -1865,6 +1968,107 @@ export class Game {
     this.ring(k.x, L.floorY - 30, RING.biggest);
     this.note('Fired out of the cannon');
     this.say('raccoon', 'WHEEEEEEE!', 1.4);
+  }
+
+  /* --------------------------------------------------------------- moon */
+
+  private updateSats(dt: number) {
+    for (const s of this.sats) {
+      s.cd = Math.max(0, s.cd - dt);
+      if (s.state !== 'scan') {
+        s.t -= dt;
+        if (s.t <= 0) s.state = 'scan';
+        continue;
+      }
+      s.sweepT += dt;
+      const [a, b] = s.route;
+      s.x += s.dir * SAT.speed * dt;
+      if (s.x <= a) [s.x, s.dir] = [a, 1];
+      else if (s.x >= b) [s.x, s.dir] = [b, -1];
+      if (s.cd <= 0 && this.satSees(s)) this.satAlarm(s);
+    }
+  }
+
+  /** Its searchlight's angle above level: straight down, swinging side to side. */
+  satBeam(s: Sat): number {
+    return -Math.PI / 2 + SAT.sweep * Math.sin((2 * Math.PI * s.sweepT) / SAT.period);
+  }
+
+  satEye(s: Sat) {
+    return { x: s.x, y: s.y + 12 };
+  }
+
+  /** The searchlight looks down, so a rock over your head hides you. */
+  private satSees(s: Sat): boolean {
+    const R = this.raccoon;
+    if (R.state === 'playdead' && R.hiddenOk) return false;
+    return this.coneSees(this.satEye(s), 1, this.satBeam(s), SAT.half, SAT.range, true);
+  }
+
+  private satAlarm(s: Sat) {
+    s.state = 'alarm';
+    s.t = SAT.alarm;
+    s.cd = SAT.cooldown;
+    this.emit({ type: 'siren' });
+    this.ring(s.x, s.y, RING.siren);
+    if (this.bob.state === 'outside') this.alarmAt = s.x;
+    this.note(this.bob.state === 'outside' ? 'A satellite spotted you: alarm, and it called Bob in early' : 'A satellite spotted you: alarm');
+    this.say('cousin', 'Chrr! The satellite saw you! Get under a rock!', 2.2);
+  }
+
+  private knockSat(s: Sat) {
+    s.state = 'down';
+    s.t = KNOCKDOWN.sat;
+    this.emit({ type: 'bonk' });
+    this.say('cousin', 'Chrr-chrr! Satellite down!', 1.8);
+  }
+
+  /** The drone rides at your shoulder. Fill your paws and it takes the lot to the airlock, then comes back for more. */
+  private updateDrone(dt: number) {
+    const D = this.drone;
+    if (!D) return;
+    const R = this.raccoon;
+    const home = { x: R.x - R.facing * 34, y: R.y - 26 }; // behind you, by the tail, clear of the prompts
+    const flyTo = (x: number, y: number) => {
+      const dx = x - D.x;
+      const dy = y - D.y;
+      const d = Math.hypot(dx, dy);
+      const step = DRONE.speed * dt;
+      if (d <= step) {
+        D.x = x;
+        D.y = y;
+        return true;
+      }
+      D.x += (dx / d) * step;
+      D.y += (dy / d) * step;
+      return false;
+    };
+    if (D.state === 'dock') {
+      const k = Math.min(1, DRONE.follow * dt);
+      D.x += (home.x - D.x) * k;
+      D.y += (home.y - D.y) * k;
+      if (R.carry.length >= R.cap && this.level.hole) {
+        D.cargo = R.carry;
+        R.carry = [];
+        this.fixReady();
+        D.state = 'out';
+        this.emit({ type: 'drone' });
+        this.note(`The drone took ${D.cargo.length} up to your cousin`);
+        this.say('raccoon', 'Fly, little buddy!', 1.4);
+      }
+    } else if (D.state === 'out') {
+      const h = this.level.hole!;
+      if (flyTo(h.x + h.w / 2, h.y + h.h / 2)) {
+        const n = D.cargo.length;
+        const specials = this.turnIn(D.cargo);
+        this.note(`The drone handed up ${n}${specials ? ` (${specials} special)` : ''}`);
+        D.cargo = [];
+        D.state = 'back';
+        this.smashRun = 0;
+        this.emit({ type: 'bank' });
+        this.say('cousin', specials ? 'Chrrr! Air mail! Jackpot!' : 'Chrr! Air mail!', 2);
+      }
+    } else if (flyTo(home.x, home.y)) D.state = 'dock';
   }
 
   /* --------------------------------------------------------------- tank */
@@ -2115,6 +2319,7 @@ export class Game {
       return;
     }
 
+    if (this.level.space) this.jetpack(dt);
     const walk = (to: number, speed: number) => {
       const d = to - B.x;
       if (Math.abs(d) > 1) B.dir = d > 0 ? 1 : -1;
@@ -2181,7 +2386,7 @@ export class Game {
           if (B.windT <= 0) this.bobThrow();
         } else if (Math.abs(R.x - B.x) > BOB.poleReachX * 0.6) walk(R.x, BOB.chaseSpeed);
         this.aimAt();
-        const high = this.level.floorY - R.y > BOB.poleReachUp; // up on a shelf, out of pole reach
+        const high = this.bobFeet - R.y > BOB.poleReachUp; // up on a shelf, out of pole reach
         if (high && B.windT <= 0 && B.throwCd <= 0 && this.seen()) this.bobWindUp();
         if (this.seen()) B.lostT = 0;
         else B.lostT += dt;
@@ -2211,12 +2416,30 @@ export class Game {
     }
   }
 
+  /**
+   * On the Moon his jetpack keeps him hovering, and in a chase it takes him up toward you, slowly, so a rock is no
+   * longer out of reach for long. Knocked down, he drops.
+   */
+  private jetpack(dt: number) {
+    const B = this.bob;
+    if (B.state === 'down') {
+      B.lift = Math.max(0, B.lift - SPACE.bobFall * dt);
+      return;
+    }
+    const chase = B.state === 'chase' || B.state === 'shout';
+    const want = chase
+      ? Math.max(SPACE.bobHover, Math.min(SPACE.bobMaxLift, this.level.floorY - this.raccoon.y - 20))
+      : SPACE.bobHover + Math.sin(this.t * 2) * 6;
+    const d = want - B.lift;
+    B.lift += Math.sign(d) * Math.min(Math.abs(d), (chase ? SPACE.bobClimb : 40) * dt);
+  }
+
   /** He grabs the nearest bottle he can reach off a shelf and raises it to throw. */
   private bobWindUp() {
     const B = this.bob;
-    const floor = this.level.floorY;
+    const floor = this.bobFeet;
     const b = this.bottles
-      .filter((b) => b.state === 'shelf' && Math.abs(b.x - B.x) <= BOB_THROW.grabRange && floor - b.y <= BOB_THROW.grabHeight)
+      .filter((b) => b.state === 'shelf' && Math.abs(b.x - B.x) <= BOB_THROW.grabRange && floor - b.y <= BOB_THROW.grabHeight && b.y <= floor + 30)
       .sort((p, q) => Math.abs(p.x - B.x) - Math.abs(q.x - B.x))[0];
     if (!b) {
       B.throwCd = 0.5; // nothing to hand: he looks again in a moment
@@ -2235,11 +2458,11 @@ export class Game {
     const R = this.raccoon;
     if (!B.holding) return;
     const hx = B.x + B.dir * 14;
-    const hy = this.level.floorY - 104;
+    const hy = this.bobFeet - 104;
     const dx = R.x - hx;
     const dy = R.y - R.h / 2 - hy;
     const T = Math.max(BOB_THROW.minFlight, Math.min(BOB_THROW.maxFlight, Math.abs(dx) / BOB_THROW.speed));
-    const vy = (dy - 0.5 * RACCOON.gravity * T * T) / T;
+    const vy = (dy - 0.5 * this.gravity * T * T) / T;
     this.bottles.push({ id: this.nextId++, x: hx, y: hy, kind: B.holding, board: -1, state: 'air', vx: dx / T, vy, safeT: 0, owner: 'bob' });
     B.holding = null;
     B.throwCd = BOB_THROW.every;
@@ -2250,7 +2473,7 @@ export class Game {
   private bobDrop() {
     const B = this.bob;
     if (B.holding) {
-      this.bottles.push({ id: this.nextId++, x: B.x + B.dir * 14, y: this.level.floorY - 104, kind: B.holding, board: -1, state: 'air', vx: 0, vy: 0, safeT: 0, owner: 'bob' });
+      this.bottles.push({ id: this.nextId++, x: B.x + B.dir * 14, y: this.bobFeet - 104, kind: B.holding, board: -1, state: 'air', vx: 0, vy: 0, safeT: 0, owner: 'bob' });
     }
     B.holding = null;
     B.windT = 0;
@@ -2286,7 +2509,7 @@ export class Game {
   }
 
   beamOrigin() {
-    return { x: this.bob.x + this.bob.dir * 12, y: this.level.floorY - 64 };
+    return { x: this.bob.x + this.bob.dir * 12, y: this.bobFeet - 64 };
   }
 
   /**
@@ -2331,7 +2554,7 @@ export class Game {
       for (const px of [u.x, u.x + u.w]) {
         if ((o.x - px) * (p.x - px) >= 0 || Math.abs(px - o.x) < POST_GRACE) continue;
         const y = o.y + ((px - o.x) / (p.x - o.x)) * (p.y - o.y);
-        if (y > u.top && y < L.floorY) return false;
+        if (y > u.top && y < (u.bottom ?? L.floorY)) return false;
       }
     }
     if (L.counter && segmentHitsRect(o, p, L.counter)) return false;
@@ -2348,7 +2571,8 @@ export class Game {
     const R = this.raccoon;
     const B = this.bob;
     if (Math.abs(R.x - B.x) > BOB.poleReachX) return false;
-    if (R.y < this.level.floorY - BOB.poleReachUp) return false;
+    if (R.y < this.bobFeet - BOB.poleReachUp) return false;
+    if (R.y - R.h > this.bobFeet + 10) return false; // below his boots: the pole doesn't reach down
     return this.lineOfSight(this.beamOrigin(), { x: R.x, y: R.y - R.h / 2 });
   }
 
@@ -2432,7 +2656,7 @@ export class Game {
     const at = R.carry[R.ready] === 'champagne' ? R.ready : R.carry.indexOf('champagne');
     R.carry.splice(at, 1);
     this.fixReady();
-    if (R.grounded) this.spills.push({ id: this.nextId++, x: R.x, y: R.y, kind: 'champagne', x0: R.x, flow: 0 });
+    if (R.grounded) this.spills.push({ id: this.nextId++, x: R.x, y: R.y - (this.level.space ? SPACE.blobUp : 0), kind: 'champagne', x0: R.x, flow: 0 });
     this.ring(R.x, R.y - R.h / 2, RING.big);
     R.vx = R.facing * (FIZZ.minSpeed + (FIZZ.maxSpeed - FIZZ.minSpeed) * R.fizz);
     R.vy = -FIZZ.lift;
@@ -2479,7 +2703,7 @@ export class Game {
     const dx = R.x - hx + (woozy ? (this.rand() - 0.5) * POSSUM.wideBy : 0);
     const dy = R.y - R.h / 2 - hy;
     const T = woozy ? POSSUM.loopyFlight : Math.max(POSSUM.minFlight, Math.min(POSSUM.maxFlight, Math.abs(dx) / POSSUM.speed));
-    const vy = (dy - 0.5 * RACCOON.gravity * T * T) / T;
+    const vy = (dy - 0.5 * this.gravity * T * T) / T;
     this.bottles.push({ id: this.nextId++, x: hx, y: hy, kind: 'can', board: -1, state: 'air', vx: dx / T, vy, safeT: 0, owner: 'possum' });
     P.cd = POSSUM.every;
     this.emit({ type: 'throw' });
@@ -2519,16 +2743,20 @@ export class Game {
     this.archers = (this.level.archers ?? []).map((a) => ({ x: a.x, dir: 1, state: 'hidden', t: 0, cd: 1 + this.rand() * 4, aim: 0 }));
     this.clowns = (this.level.clowns ?? []).map(([a, b], i) => ({ x: (a + b) / 2, dir: i % 2 ? -1 : 1, route: [a, b], state: 'patrol', t: 0, cd: 2 }));
     this.critters = (this.level.critters ?? []).map((c) => ({ kind: c.kind, home: { x: c.x, y: c.y }, x: c.x, y: c.y, dir: -1, state: 'idle', t: 0, cd: 1.5 + this.rand() * 3, to: { x: c.x, y: c.y } }));
-    this.scrub.x = this.tutorial || this.level.archers || this.level.circus ? -9999 : this.level.scrubberStart!; // off the map in the practice store, so bottles can't hit it
+    this.sats = (this.level.sats ?? []).map((s, i) => ({ x: (s.route[0] + s.route[1]) / 2, y: s.y, dir: i % 2 ? -1 : 1, route: s.route, state: 'scan', t: 0, cd: 3, sweepT: i * 1.3 }));
+    this.drone = this.has('drone') ? { x: this.level.start.x, y: this.level.ceilingY + 40, state: 'dock', cargo: [] } : null;
+    this.scrub.x = this.tutorial || this.level.archers || this.level.circus || this.level.space ? -9999 : this.level.scrubberStart!; // off the map in the practice store, so bottles can't hit it
     this.scrub.dir = -1;
     this.place(this.level.start.x, this.level.ceilingY + this.raccoon.h + 2);
     this.raccoon.vy = 200;
     // The tile is the first smash of the night.
-    if (!this.level.faire && !this.level.circus) this.emit({ type: 'smash', x: this.raccoon.x, y: this.level.ceilingY, kind: 'tile' });
+    const outdoors = this.level.faire || this.level.circus || this.level.space; // no ceiling tile to smash
+    if (!outdoors) this.emit({ type: 'smash', x: this.raccoon.x, y: this.level.ceilingY, kind: 'tile' });
     this.specialsTotal = this.level.bottles.filter((b) => isSpecial(b.kind)).length;
     this.ring(this.raccoon.x, this.level.ceilingY, RING.small);
-    this.shake = this.level.faire || this.level.circus ? 0 : 0.7;
-    if (this.level.circus) this.say('cousin', "Chrr! Step right up, cuz! The good stuff's in the stands. The cannon goes to the far side!", 3.5);
+    this.shake = outdoors ? 0 : 0.7;
+    if (this.level.space) this.say('cousin', 'Chrr! One small step, cuz! Grab the drone on the pad: fill your paws and it flies them up to me!', 4);
+    else if (this.level.circus) this.say('cousin', "Chrr! Step right up, cuz! The good stuff's in the stands. The cannon goes to the far side!", 3.5);
     else if (this.level.faire) this.say('cousin', 'Chrr! Hark, cuz! Bottles on yon trees! Bring them to the hollow!', 3.5);
     else this.say('cousin', this.tutorial ? 'Chrr! Practice first. Follow the sign up top!' : this.night === 1 ? 'Chrr! Pass the good stuff up to me here!' : "Chrr! They bought a TANK! I'm up in the middle tonight!", 3.5);
   }
@@ -2539,6 +2767,11 @@ export class Game {
       return;
     }
     const R = this.raccoon;
+    const cargo = this.drone?.cargo ?? [];
+    if (cargo.length) {
+      if (escaped) this.turnIn(cargo);
+      this.note(escaped ? `The drone made it up with ${cargo.length} more` : `Lost: ${cargo.length} on the drone`);
+    }
     if (escaped) {
       if (R.carry.length) {
         this.turnIn();
@@ -2582,7 +2815,8 @@ export class Game {
   }
 
   say(who: Who, text: string, ttl = 2) {
-    if (who === 'bob' && (this.level.faire || this.level.circus)) text = (this.level.faire ? BOB_FAIRE : BOB_CIRCUS)[text] ?? text;
+    const L = this.level;
+    if (who === 'bob' && (L.faire || L.circus || L.space)) text = (L.faire ? BOB_FAIRE : L.circus ? BOB_CIRCUS : BOB_SPACE)[text] ?? text;
     if (this.sayCd[who] > 0 && who !== 'bob') return;
     this.sayCd[who] = who === 'cousin' ? 2.5 : 0.8;
     this.says = this.says.filter((s) => s.who !== who);

@@ -427,6 +427,12 @@ export class Sound {
         this.noise(0.9, 0.7, 0, 0, 900);
         this.tone(60, 0.8, 'triangle', 0.6, 0.45);
         break;
+      case 'drone':
+        // Rotors spinning up and buzzing off.
+        this.tone(180, 0.7, 'sawtooth', 0.06, 2.4);
+        this.tone(186, 0.7, 'square', 0.03, 2.3);
+        [880, 1175].forEach((f, i) => this.tone(f, 0.1, 'triangle', 0.08, 1, i * 0.1));
+        break;
       case 'lidReady':
         this.tone(1568, 0.3, 'triangle', 0.1, 1.02);
         break;

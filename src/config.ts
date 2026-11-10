@@ -58,6 +58,24 @@ export const CANNON = { flight: 1.1, reach: 30 };
 export const ROPE = { slipFrom: 2, slipPerSec: 0.22 }; // per Buzz step from slipFrom up
 export const SLICK = { life: 10, grip: 0.12, w: 44 };
 
+// Night 5, the Moon (host, 2026-11-09). Low gravity: floatier jumps, slower falls, and no fall knocks you out. All guesses.
+export const SPACE = {
+  gravity: 560, // px/s², about a third of Earth's 1500
+  jumpSpeed: 470, // ~197 px high, 1.7 s in the air
+  maxFall: 420,
+  drift: [60, 120] as const, // px/s a bumped bottle drifts off at, in a straight line
+  blobUp: 16, // px above where it smashed that a spill floats, so it can be drunk midair
+  blobReach: 34,
+  bobHover: 26, // px Bob's jetpack holds him off the floor while he searches
+  bobMaxLift: 330,
+  bobClimb: 75, // px/s up or down toward you in a chase
+  bobFall: 320, // px/s he drops when he's knocked down
+};
+// Security satellites near the top of the dome: a searchlight swinging below them. Spotting you sets off the alarm.
+export const SAT = { speed: 55, range: 430, half: 0.24, sweep: 0.55, period: 3.4, alarm: 3, cooldown: 8 };
+// Night 5's powerup: when your paws are full it takes the lot up to your cousin by itself (host, 2026-11-09). Guesses.
+export const DRONE = { speed: 300, follow: 6 };
+
 export const BUZZ = {
   steps: 5, // (design) sober x1, each step +0.5, top x3.5
   perStep: 0.5,
@@ -95,7 +113,7 @@ export const THROW = {
 // Undecided on the board; the host took the builder's proposal: no health bars,
 // a bottle knocks an enemy off its feet for a while. (guess)
 // s knocked off their feet; Bob's raised from 1.5 so a bonk buys a real getaway (host, 2026-11-07)
-export const KNOCKDOWN = { scrubber: 4, bob: 4.5, archer: 4, clown: 4, critter: 4 };
+export const KNOCKDOWN = { scrubber: 4, bob: 4.5, archer: 4, clown: 4, critter: 4, sat: 5 };
 
 export const FLOW = { speed: 45, min: 140, max: 360 }; // big floor spills run toward the front (guess)
 export const TUTORIAL = { restock: 3 }; // s until the practice store puts a missing bottle back (guess)
@@ -199,6 +217,7 @@ export const NIGHTS = [
   { length: 360, specials: { rum: 12, curacao: 12 }, champagne: 5, tank: true, archers: false, wash: '#6288f2', lamp: '#3f8cff', bulb: '#a8d4ff' },
   { length: 420, specials: { rum: 14, curacao: 14 }, champagne: 6, tank: false, archers: true, wash: null, lamp: '#ffae52', bulb: '#ffd08a' },
   { length: 480, specials: { rum: 16, curacao: 16 }, champagne: 6, tank: false, archers: false, wash: null, lamp: '#ffe2a0', bulb: '#fff2c8' },
+  { length: 540, specials: { rum: 18, curacao: 18 }, champagne: 6, tank: false, archers: false, wash: null, lamp: '#b9a4ff', bulb: '#ece4ff' },
 ] as const;
 
 // Champagne (design): run with it and it fizzes up, tap Grab to pop the cork and get rocketed. All guesses.
