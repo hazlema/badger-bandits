@@ -276,14 +276,14 @@ describe('pot lid', () => {
 describe('Sir Bob', () => {
   it('speaks the part', () => {
     const g = faire();
-    g.say('bob', 'HEY! Raccoon!', 1);
-    expect(g.says.some((s) => s.who === 'bob' && s.text === 'HALT, varlet!')).toBe(true);
+    g.say('bob', 'HEY! Badger!', 1);
+    expect(g.says.some((s) => s.who === 'bob' && s.text === 'HALT, badger!')).toBe(true);
   });
 
   it("doesn't on the other nights", () => {
     const g = new Game({ start: 'store', night: 2 });
-    g.say('bob', 'HEY! Raccoon!', 1);
-    expect(g.says.some((s) => s.who === 'bob' && s.text === 'HEY! Raccoon!')).toBe(true);
+    g.say('bob', 'HEY! Badger!', 1);
+    expect(g.says.some((s) => s.who === 'bob' && s.text === 'HEY! Badger!')).toBe(true);
   });
 
   it('counts as danger for the sneakers when an archer draws', () => {

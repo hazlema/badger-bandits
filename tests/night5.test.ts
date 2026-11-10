@@ -243,7 +243,7 @@ describe('Commander Bob', () => {
 
   it('talks like an astronaut', () => {
     const g = moon();
-    g.say('bob', 'HEY! Raccoon!');
-    expect(g.says.at(-1)!.text).toBe('Houston, we have a RACCOON!');
+    g.say('bob', 'HEY! Badger!');
+    expect(g.says.at(-1)!.text).toBe('Houston, we have a BADGER!');
   });
 });

@@ -257,7 +257,7 @@ describe('cotton candy', () => {
 describe('Ringmaster Bob', () => {
   it('works the crowd', () => {
     const g = circus();
-    g.say('bob', 'HEY! Raccoon!', 1);
-    expect(g.says.some((s) => s.who === 'bob' && s.text === 'Ladies and gentlemen… a RACCOON!')).toBe(true);
+    g.say('bob', 'HEY! Badger!', 1);
+    expect(g.says.some((s) => s.who === 'bob' && s.text === 'Ladies and gentlemen… a BADGER!')).toBe(true);
   });
 });

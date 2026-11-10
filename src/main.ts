@@ -9,7 +9,8 @@ import { drawCard, drawFinal, drawHud, drawPause, drawPowers, type NightScore } 
 import { WorldView, type Prompts } from './render/world';
 import { Game } from './sim/game';
 import type { Powerup } from './sim/level';
-import { mountTeaser, type Teaser } from '../teaser/film';
+import { mountIntro } from '../teaser/intro';
+import type { Teaser } from '../teaser/player';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -54,7 +55,7 @@ function playIntro() {
     document.body.append(el);
   }
   const root = el;
-  teaser = mountTeaser(root, {
+  teaser = mountIntro(root, {
     muted: sound.muted,
     onDone: () => {
       controls.menu(); // drop the key that skipped it, so it can't also press a menu button
@@ -112,6 +113,23 @@ function nextNight() {
   view = new WorldView();
   mode = 'play';
   expose();
+}
+
+/** Testing: number keys jump straight to that night, keeping the powerups you have. */
+function jumpToNight(n: number) {
+  night = n;
+  run = [];
+  game = newGame('store');
+  view = new WorldView();
+  mode = 'play';
+  front.classList.add('hidden');
+  expose();
+}
+
+/** Testing: Ctrl+D restarts the night you're on holding every powerup, and they carry on from there. */
+function allPowerups() {
+  powerups = ['tote', 'sneakers', 'shield', 'candy', 'drone'];
+  jumpToNight(night);
 }
 
 function pick(choice: number) {
@@ -189,6 +207,8 @@ function frame(now: number) {
     const confirm = m === 'Space' || m === 'Enter' || m === 'PadA';
     if (m === 'KeyM') toggleMute();
     else if (m === 'KeyN') toggleMusic();
+    else if (!teaser && ready && m === 'CheatPowers') allPowerups();
+    else if (!teaser && ready && /^Digit[1-9]$/.test(m) && NIGHTS[Number(m[5]) - 1]) jumpToNight(Number(m[5]));
     else if (teaser) {
       // The film hears the keyboard itself; only the gamepad has to be passed on.
       if (m === 'PadA' || m === 'PadStart') teaser.press();

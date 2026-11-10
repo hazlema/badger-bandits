@@ -24,6 +24,12 @@ export class Controls {
 
   constructor() {
     addEventListener('keydown', (e) => {
+      // Ctrl+D is the tester's every-powerup key; keep it from bookmarking the page or walking right.
+      if (e.ctrlKey && e.code === 'KeyD') {
+        e.preventDefault();
+        if (!e.repeat) this.menuQueue.push('CheatPowers');
+        return;
+      }
       const k = KEYS[e.code];
       if (k) {
         this.held.add(k);

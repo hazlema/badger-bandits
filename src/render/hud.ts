@@ -377,13 +377,16 @@ const REASONS: Record<string, string> = {
   sore: 'Too sore to run. Officer Bob just scooped you up.',
 };
 
+/** The title's mix-up: the shelter has a raccoon in hand and still writes badger, less sure every night. */
+const SPECIES = ['Badger', 'Badger (probably)', 'Badger? Ringed tail?', 'Badger (raccoon disguise)', 'Moon badger'];
+
 export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) {
   const r = g.result!;
   c.fillStyle = 'rgba(15,10,18,0.7)';
   c.fillRect(0, 0, VIEW_W, VIEW_H);
   if (page === 1) return drawLog(c, g, time, pad);
   const w = 520;
-  const h = (r.escaped ? 420 : 450) + (r.coins ? 28 : 0); // room for the "kept by animal control" and coins rows
+  const h = (r.escaped ? 420 : 478) + (r.coins ? 28 : 0); // room for the species, "kept by animal control" and coins rows
   const x = (VIEW_W - w) / 2;
   const y = (VIEW_H - h) / 2;
   const den = r.escaped;
@@ -407,7 +410,7 @@ export function drawCard(c: Ctx, g: Game, time: number, pad: boolean, page = 0) 
     ...(r.coins ? ([['Coins, a bonus point each', `${r.coins}`]] as [string, string][]) : []),
     ['Buzz at the end', `x${r.mult}`],
   ];
-  if (!den) rows.push(['Kept by animal control', `${r.kept} bottle${r.kept === 1 ? '' : 's'}`]);
+  if (!den) rows.push(['Kept by animal control', `${r.kept} bottle${r.kept === 1 ? '' : 's'}`], ['Species', SPECIES[r.night - 1] ?? SPECIES.at(-1)!]);
   const top = y + (den ? 106 : 124);
   rows.forEach(([a, b], i) => {
     const ry = top + i * 28;

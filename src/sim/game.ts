@@ -236,7 +236,7 @@ const NAGS = ["Pssst! Don't smash ALL the merchandise!", 'Pssst. Those go in the
 const BIG: ItemKind[] = ['regular', 'golden', 'rum', 'curacao', 'champagne'];
 /** Everything Bob says, as he'd say it in tights. */
 const BOB_FAIRE: Record<string, string> = {
-  'HEY! Raccoon!': 'HALT, varlet!',
+  'HEY! Badger!': 'HALT, badger!',
   'What was that?': 'What ho? A noise!',
   'Animal control! Anybody in here?': 'Hear ye! Animal control!',
   'Alarm! Animal control, coming through!': 'Make way! Animal control!',
@@ -251,7 +251,7 @@ const BOB_FAIRE: Record<string, string> = {
 };
 /** And as the ringmaster. */
 const BOB_CIRCUS: Record<string, string> = {
-  'HEY! Raccoon!': 'Ladies and gentlemen… a RACCOON!',
+  'HEY! Badger!': 'Ladies and gentlemen… a BADGER!',
   'What was that?': 'What was that? Is the show starting?',
   'Animal control! Anybody in here?': 'Animal control! Is the show over?',
   'Alarm! Animal control, coming through!': 'Make way! Animal control!',
@@ -266,7 +266,7 @@ const BOB_CIRCUS: Record<string, string> = {
 };
 /** And in a space suit. */
 const BOB_SPACE: Record<string, string> = {
-  'HEY! Raccoon!': 'Houston, we have a RACCOON!',
+  'HEY! Badger!': 'Houston, we have a BADGER!',
   'What was that?': 'Control, I heard something.',
   'Animal control! Anybody in here?': 'Lunar Animal Control! Anybody up here?',
   'Alarm! Animal control, coming through!': 'Alarm! Lunar Animal Control, inbound!',
@@ -347,6 +347,7 @@ export class Game {
   private prev: Input = NO_INPUT;
   private nextId = 1;
   private alarmAt: number | null = null; // where the siren went off before Bob came in, so he heads there
+  private heckled = false; // the cousin's "We're RACCOONS, Bob!", once a night
   private sayCd: Record<Who, number> = { cousin: 0, bob: 0, raccoon: 0, scrubber: 0, possum: 0 };
   private dawnWarned = false;
   private smashRun = 0; // bottles smashed since the last hand-up
@@ -2496,7 +2497,12 @@ export class Game {
     B.state = 'shout';
     B.t = BOB.shoutTime;
     this.emit({ type: 'shout' });
-    this.say('bob', 'HEY! Raccoon!', 1.8);
+    this.say('bob', 'HEY! Badger!', 1.8);
+    // He never gets the species right (the title's mix-up), and the cousin corrects him once a night.
+    if (!this.heckled && this.sayCd.cousin <= 0) {
+      this.heckled = true;
+      this.say('cousin', "Chrr! We're RACCOONS, Bob!", 2.2);
+    }
   }
 
   /** In a chase he points the beam at you, but it can't tilt past straight-ish up. */

@@ -1,9 +1,9 @@
-/* The teaser (film.ts): two clips shown as one film in a cinema frame, the game's wordmark dropped over the end.
+/* The film player (player.ts): a few clips shown as one film in a cinema frame, with markup laid over the picture.
    #teaser is a black sheet over the whole window, and .tz-stage is the frame inside it.
-   States on #teaser: .waiting (poster up, needs a click for sound), .heist and .ending (the two clips, both also
-   .playing), .cut (the ending is the clip on screen), .titled (the wordmark is in), .ended (on the last frame),
-   .leaving (fading away), and .hold when the last frame stays up with its hints. Everything in the frame is sized
-   in cqw, so it scales with it. */
+   States on #teaser: .waiting (poster up, needs a click for sound), .playing, .ended (on the last frame),
+   .leaving (fading away), and .hold when the last frame stays up with its hints. Alongside them: .film-<name>,
+   .seg-<n> for the segment on screen, and whatever the film's cues have switched on (the teaser's .titled brings
+   its wordmark in). Everything in the frame is sized in cqw, so it scales with it. */
 #teaser {
   --ink: #1c1418;
   --cream: #f4e7cc;
@@ -43,11 +43,11 @@
   object-fit: cover;
   display: block;
 }
-/* The ending waits on its first frame, on top of the heist but unseen, so the cut to it is instant. */
-#teaser .tz-ending {
+/* Only the clip that is .on is seen. The others wait loaded on the frame they will start from, so a cut is instant. */
+#teaser .tz-clip {
   visibility: hidden;
 }
-#teaser.cut .tz-ending {
+#teaser .tz-clip.on {
   visibility: visible;
 }
 /* dims the picture under the wordmark, heaviest where the letters sit */
